@@ -20,8 +20,8 @@ jobs:
             enc=$(printf '%s' "$name" | sed 's/ /%20/g')
             slug=$(printf '%s' "$name" | tr 'A-Z ' 'a-z-')
             if curl -sfL --max-time 120 -A "Mozilla/5.0" -o "tmp/$slug.mp3" "https://incompetech.com/music/royalty-free/mp3-royaltyfree/$enc.mp3"; then
-              ffmpeg -loglevel error -y -i "tmp/$slug.mp3" -ac 2 -b:a 112k "music/$slug.mp3"
-              dur=$(ffprobe -v error -show_entries format=duration -of csv=p=0 "music/$slug.mp3" | cut -d. -f1)
+              ffmpeg -nostdin -loglevel error -y -i "tmp/$slug.mp3" -ac 2 -b:a 112k "music/$slug.mp3"
+              dur=$(ffprobe -v error -show_entries format=duration -of csv=p=0 "music/$slug.mp3" </dev/null | cut -d. -f1)
               echo "ok|$slug|$name|$dur|$(stat -c%s music/$slug.mp3)" | tee -a tools/music-log.txt
             else
               echo "fail|$slug|$name" | tee -a tools/music-log.txt
