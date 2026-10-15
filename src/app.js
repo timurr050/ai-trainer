@@ -14,7 +14,7 @@ const notify = (t = "success") => { try { tg && tg.HapticFeedback.notificationOc
 // ===================== ХРАНИЛИЩЕ =====================
 // localStorage на устройстве + Telegram CloudStorage, чтобы данные были на всех устройствах пользователя.
 const LS_KEY = "aicoach_v2";
-let store = { profile: null, history: [], session: null, shuffle: {}, basket: [] };
+let store = { profile: null, history: [], session: null, shuffle: {}, basket: [], runs: [], run: null };
 try { Object.assign(store, JSON.parse(localStorage.getItem(LS_KEY) || "{}")); } catch (e) {}
 if (!Array.isArray(store.basket)) store.basket = [];
 // v3: в зале появился новый инвентарь из полной базы упражнений
@@ -61,7 +61,8 @@ function cloudLoad() {
 }
 function resetAll() {
   if (cloud) try { cloud.getKeys((e, keys) => { if (!e && keys && keys.length) cloud.removeItems(keys); }); } catch (e) {}
-  store = { profile: null, history: [], session: null, shuffle: {} };
+  geoStop(); wakeOff();
+  store = { profile: null, history: [], session: null, shuffle: {}, basket: [], runs: [], run: null };
   try { localStorage.removeItem(LS_KEY); } catch (e) {}
   state.stack = []; state.ob = null; state.tab = "coach";
   render();
@@ -320,8 +321,9 @@ function render() {
   let html;
   const onboarding = !store.profile || state.ob;
   if (onboarding) html = viewOnboarding();
-  else if (top) html = ({ preview: viewPreview, session: viewSession, exercise: viewExercise, settings: viewSettings, builder: viewBuilder })[top.type](top);
-  else html = { coach: viewCoach, catalog: viewCatalog, timer: viewTimer, history: viewHistory, progress: viewProgress }[state.tab]();
+  else if (top) html = ({ preview: viewPreview, session: viewSession, exercise: viewExercise, settings: viewSettings, builder: viewBuilder, run: viewRunDetail })[top.type](top);
+  else html = { coach: viewCoach, catalog: viewCatalog, run: viewRun, timer: viewTimer, history: viewHistory, progress: viewProgress }[state.tab]();
+  killMap();
   const bar = !onboarding && (!top ? state.tab === "catalog" : top.type === "exercise") ? basketBar() : "";
   $app.innerHTML = `<div class="screen">${html}</div>${bar}`;
   const hideTabs = onboarding || (top && top.type === "session");
@@ -334,6 +336,7 @@ function render() {
   }
   renderRestBar();
   bind();
+  if (!onboarding) { afterRunRender(); renderRunBar(); }
 }
 
 // ===================== АНКЕТА =====================
@@ -552,7 +555,7 @@ function viewCatalog() {
     <button class="tile${e.db ? " tile-db" : ""}" data-ex="${e.id}">${pic(e, 500)}${store.basket.includes(e.id) ? `<span class="in-basket">✓</span>` : ""}
       <div class="cap"><span>${GROUPS[e.group].name}${e.eq.length ? "" : " · свой вес"}</span><b>${e.name}</b></div></button>`).join("") || `<div class="muted">Ничего не найдено</div>`}</div>
   ${n > shown.length ? `<div class="section"><button class="btn dark block" data-more>Показать ещё (${n - shown.length})</button></div>` : ""}
-  <div class="muted" style="font-size:12px;margin:18px 0 0;text-align:center">Версия 3.2</div>`;
+  <div class="muted" style="font-size:12px;margin:18px 0 0;text-align:center">Версия 3.3</div>`;
 }
 function basketBar() {
   const n = store.basket.length;
@@ -725,25 +728,28 @@ function viewTimer() {
 
 // ===================== ИСТОРИЯ =====================
 function viewHistory() {
-  const H = store.history;
-  if (!H.length) return `<div class="top"><div><div class="eyebrow">Твои занятия</div><div class="h1" style="margin-top:8px">История</div></div></div>
-    <div class="empty"><div class="big">📭</div><b>Пока пусто</b><p>Здесь появятся твои тренировки. Начни первую, и я буду следить за прогрессом.</p><button class="btn" data-gocoach>К тренировке</button></div>`;
-  const mins = H.reduce((s, h) => s + h.m, 0), vol = H.reduce((s, h) => s + h.v, 0);
-  const days = new Map(); H.forEach((h) => { const k = new Date(h.d).toDateString(); days.set(k, (days.get(k) || 0) + h.m); });
+  const H = store.history, R = store.runs || [];
+  if (!H.length && !R.length) return `<div class="top"><div><div class="eyebrow">Твои занятия</div><div class="h1" style="margin-top:8px">История</div></div></div>
+    <div class="empty"><div class="big">📭</div><b>Пока пусто</b><p>Здесь появятся твои тренировки и пробежки. Начни первую, и я буду следить за прогрессом.</p><button class="btn" data-gocoach>К тренировке</button></div>`;
+  const mins = H.reduce((s, h) => s + h.m, 0) + Math.round(R.reduce((s, x) => s + x.s, 0) / 60), vol = H.reduce((s, h) => s + h.v, 0), runKm = R.reduce((s, x) => s + x.m, 0) / 1000;
+  const days = new Map(), addDay = (d, m) => { const k = new Date(d).toDateString(); days.set(k, (days.get(k) || 0) + m); };
+  H.forEach((h) => addDay(h.d, h.m)); R.forEach((x) => addDay(x.d, x.s / 60));
   const start = mondayOf(); start.setDate(start.getDate() - 7 * 11);
   const cells = []; const now = new Date();
   for (let i = 0; i < 84; i++) { const d = new Date(start); d.setDate(start.getDate() + i); const m = days.get(d.toDateString()) || 0;
     cells.push(`<i class="${m > 50 ? "l3" : m > 25 ? "l2" : m > 0 ? "l1" : ""}" ${d > now ? 'style="opacity:.25"' : ""}></i>`); }
-  const groups = {}; H.slice(0, 60).forEach((h) => { const d = new Date(h.d); const k = `${MONTHS[d.getMonth()]} ${d.getFullYear()}`; (groups[k] = groups[k] || []).push(h); });
+  const items = [...H.map((h) => ({ d: h.d, h })), ...R.map((x) => ({ d: x.d, x }))].sort((a, b) => new Date(b.d) - new Date(a.d)).slice(0, 80);
+  const groups = {}; items.forEach((it) => { const d = new Date(it.d); const k = `${MONTHS[d.getMonth()]} ${d.getFullYear()}`; (groups[k] = groups[k] || []).push(it); });
+  const n = H.length + R.length;
   return `
   <div class="top"><div><div class="eyebrow">Твои занятия</div><div class="h1" style="margin-top:8px">История</div></div></div>
   <div class="stats">
-    <div class="stat"><div class="big-num lime">${H.length}</div><div class="eyebrow">${plural(H.length, "занятие", "занятия", "занятий")}</div></div>
+    <div class="stat"><div class="big-num lime">${n}</div><div class="eyebrow">${plural(n, "занятие", "занятия", "занятий")}</div></div>
     <div class="stat"><div class="big-num">${mins >= 120 ? Math.round(mins / 60) + "ч" : mins}</div><div class="eyebrow">${mins >= 120 ? "часов" : "минут"}</div></div>
-    <div class="stat"><div class="big-num">${(vol / 1000).toFixed(1)}т</div><div class="eyebrow">поднято</div></div>
+    ${vol || !R.length ? `<div class="stat"><div class="big-num">${(vol / 1000).toFixed(1)}т</div><div class="eyebrow">поднято</div></div>` : `<div class="stat"><div class="big-num">${runKm.toFixed(1)}</div><div class="eyebrow">км бега</div></div>`}
   </div>
   <div class="card section" style="margin-top:12px"><div class="section-head"><div class="h3">Активность</div><span class="muted" style="font-size:12px">12 недель</span></div><div class="heat">${cells.join("")}</div></div>
-  ${Object.entries(groups).map(([m, items]) => `<div class="h2 month">${m}</div><div class="list">${items.map((h) => { const d = new Date(h.d); return `
+  ${Object.entries(groups).map(([m, its]) => `<div class="h2 month">${m}</div><div class="list">${its.map((it) => { if (it.x) return runRow(it.x); const h = it.h, d = new Date(h.d); return `
     <div class="hist"><div class="date-box"><b>${d.getDate()}</b><small>${DAYS[dow(d)]}</small></div>
       <div style="flex:1;min-width:0"><div style="font-weight:700">${esc(h.t)}</div>
       <div class="hist-meta"><span>⏱ <b>${h.m}</b> мин</span><span>📋 <b>${h.x.length}</b> упр.</span>${h.v ? `<span>🏋 <b>${(h.v / 1000).toFixed(1)}</b> т</span>` : ""}</div>
@@ -775,8 +781,15 @@ function barChart(values, labels) {
     ${v ? `<text class="val" x="${P.l + i * bw + bw / 2}" y="${H - P.b - h - 6}" text-anchor="middle">${v}</text>` : ""}
     <text class="axis" x="${P.l + i * bw + bw / 2}" y="${H - 6}" text-anchor="middle">${labels[i]}</text>`; }).join("")}</svg>`;
 }
+function runWeeks() {
+  const mon = mondayOf(), kms = Array(8).fill(0), labels = [];
+  for (let i = 7; i >= 0; i--) { const d = new Date(mon); d.setDate(d.getDate() - i * 7); labels.push(i === 0 ? "эта" : String(d.getDate())); }
+  (store.runs || []).forEach((x) => { const w = Math.floor((mon - mondayOf(new Date(x.d))) / (7 * 864e5)); if (w >= 0 && w < 8) kms[7 - w] += x.m / 1000; });
+  return `<div class="card section" style="margin-top:10px"><div class="section-head"><div><div class="eyebrow">Бег, км в неделю</div><div class="big-num" style="margin-top:6px">${kms[7].toFixed(1)} <span style="font-size:18px">км</span></div></div><span class="muted" style="font-size:13px">8 недель</span></div>${barChart(kms.map((k) => Math.round(k * 10) / 10), labels)}</div>`;
+}
 function viewProgress() {
   const H = store.history;
+  if (!H.length && store.runs && store.runs.length) return `<div class="top"><div><div class="eyebrow">Графики и рекорды</div><div class="h1" style="margin-top:8px">Прогресс</div></div></div>${runWeeks()}`;
   if (!H.length) return `<div class="top"><div><div class="eyebrow">Графики и рекорды</div><div class="h1" style="margin-top:8px">Прогресс</div></div></div>
     <div class="empty"><div class="big">📈</div><b>Данных пока нет</b><p>После первых тренировок здесь появятся графики: сколько ты занимаешься, какие мышцы прорабатываешь и как растут рабочие веса. Вписывай вес в подходах, чтобы видеть рекорды.</p><button class="btn" data-gocoach>К тренировке</button></div>`;
   // тренировки по неделям
@@ -797,6 +810,7 @@ function viewProgress() {
   return `
   <div class="top"><div><div class="eyebrow">Графики и рекорды</div><div class="h1" style="margin-top:8px">Прогресс</div></div></div>
   <div class="card"><div class="section-head"><div><div class="eyebrow">Тренировок в неделю</div><div class="big-num" style="margin-top:6px">${counts[7]} <span style="font-size:18px">из ${store.profile.days}</span></div></div><span class="muted" style="font-size:13px">8 недель</span></div>${barChart(counts, labels)}</div>
+  ${store.runs && store.runs.length ? runWeeks() : ""}
   <div class="card section" style="margin-top:10px"><div class="section-head"><div class="eyebrow">Подходов по мышцам за 30 дней</div></div>
     <div class="bar-list">${Object.keys(GROUPS).map((g) => `<div class="br"><span>${GROUPS[g].name}</span><div class="tr"><i style="width:${((bySets[g] || 0) / maxSets) * 100}%"></i></div><span>${bySets[g] || 0}</span></div>`).join("")}</div></div>
   ${L ? `<div class="section"><div class="chips">${liftIds.map((id) => `<button class="chip ${id === state.liftEx ? "active" : ""}" data-lift="${id}">${exById(id).name}</button>`).join("")}</div>
@@ -856,6 +870,16 @@ function bind() {
     store.basket = b.includes(id) ? b.filter((x) => x !== id) : [...b, id]; save(); notify(); render(); });
   const an = document.getElementById("anim");
   if (an) startDemo(an);
+  // бег
+  on("[data-run]", (el) => { const a = el.dataset.run;
+    if (a === "start") { if (geo.err === "denied") { toast("Нужен доступ к геопозиции"); return; } runStart(); }
+    if (a === "pause") runPause();
+    if (a === "resume") runResume();
+    if (a === "finish") { if (el.dataset.confirm) runFinish(); else { el.dataset.confirm = "1"; el.textContent = "Точно завершить?"; setTimeout(() => { if (el.isConnected) { delete el.dataset.confirm; el.textContent = "■ Завершить"; } }, 3000); } } });
+  on("[data-wt]", (el) => { store.profile.weight = Math.max(30, Math.min(200, runWeight() + +el.dataset.wt)); save(); render(); });
+  on("[data-voice]", () => { store.profile.voice = store.profile.voice === false; save(); render(); });
+  on("[data-runview]", (el) => push({ type: "run", i: +el.dataset.runview }));
+  on("[data-rundel]", (el) => { if (el.dataset.confirm) { store.runs.splice(+el.dataset.rundel, 1); save(); pop(); toast("Пробежка удалена"); } else { el.dataset.confirm = "1"; el.textContent = "Нажми ещё раз, чтобы удалить"; } });
   on("[data-unbasket]", (el) => { const v = state.stack[state.stack.length - 1], it = v.w.items.splice(+el.dataset.unbasket, 1)[0];
     store.basket = store.basket.filter((x) => x !== it.id); save(); render(); });
   on("[data-basket-go]", () => push({ type: "preview", w: basketWorkout(), basket: true }));
@@ -887,6 +911,8 @@ function bind() {
   const clock = document.getElementById("s-clock");
   if (clock && store.session) sessionClock = setInterval(() => { if (store.session) clock.textContent = fmt(Math.floor((Date.now() - store.session.startedAt) / 1000)); }, 1000);
 }
+
+// @@RUN@@
 
 render();
 cloudLoad();

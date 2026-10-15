@@ -170,7 +170,7 @@ img { display: block; }
 .pr b { font-family: var(--display); font-size: 18px; }
 
 /* Tab bar */
-.tabbar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 10; display: grid; grid-template-columns: repeat(5, 1fr); padding: 8px 8px calc(8px + var(--safe-bottom)); background: rgba(0,0,0,.86); backdrop-filter: blur(16px); border-top: 1px solid var(--line); }
+.tabbar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 10; display: grid; grid-template-columns: repeat(6, 1fr); padding: 8px 4px calc(8px + var(--safe-bottom)); background: rgba(0,0,0,.86); backdrop-filter: blur(16px); border-top: 1px solid var(--line); }
 .tabbar button { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 6px 0; color: var(--muted); font-size: 10px; font-weight: 600; }
 .tabbar svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .tabbar button.active { color: var(--lime); }
@@ -268,3 +268,36 @@ img { display: block; }
 .anim-ctl .spd { width: auto; padding: 0 12px; border-radius: 999px; background: var(--surface-2); color: #fff; }
 .anim-ctl .lbl { font-size: 11px; font-weight: 700; color: var(--muted, #999); text-transform: uppercase; }
 .anim-ctl input { flex: 1; accent-color: var(--lime); min-width: 0; }
+/* бег */
+.gps { text-transform: none; letter-spacing: 0; font-size: 13px; }
+.gps.ok { color: var(--lime); } .gps.wait { color: #ffc23d; } .gps.bad { color: var(--danger); }
+.run-map { position: relative; height: 230px; border-radius: 22px; overflow: hidden; background: var(--surface); margin-top: 4px; z-index: 0; }
+.run-map.live { height: 260px; }
+.run-map.big { height: 320px; }
+.map-off { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; padding: 24px; color: var(--muted); font-size: 14px; }
+.leaflet-container { background: #111 !important; font: inherit; }
+.leaflet-control-attribution { background: rgba(0,0,0,.6) !important; color: #777 !important; font-size: 9px !important; }
+.leaflet-control-attribution a { color: #999 !important; }
+.run-start { display: grid; place-items: center; width: 150px; height: 150px; margin: -60px auto 0; position: relative; z-index: 2; border-radius: 50%; background: var(--lime); color: #000; box-shadow: 0 0 0 10px #000, 0 0 50px rgba(204,255,0,.35); }
+.run-start span { font-family: var(--display); font-weight: 900; font-size: 26px; text-transform: uppercase; }
+.run-start:active { transform: scale(.96); }
+.run-clock { font-family: var(--display); font-weight: 900; font-size: 64px; line-height: 1; margin-top: 8px; font-variant-numeric: tabular-nums; letter-spacing: -.02em; }
+.run-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 12px; }
+.run-grid > div { background: var(--surface); border-radius: 18px; padding: 12px; min-width: 0; }
+.run-grid .eyebrow { font-size: 10px; letter-spacing: .08em; display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.run-grid b { display: block; font-family: var(--display); font-size: 22px; margin-top: 8px; font-variant-numeric: tabular-nums; }
+.run-grid small { color: var(--muted); font-size: 12px; }
+.run-grid > div:first-child b { color: var(--lime); }
+.run-ctl { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 16px; }
+.run-hero { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 12px; }
+.run-hero > div { background: var(--lime); color: #000; border-radius: 20px; padding: 14px 16px; }
+.run-hero b { display: block; font-family: var(--display); font-weight: 900; font-size: 34px; line-height: 1; }
+.run-hero span { font-weight: 700; font-size: 12px; text-transform: uppercase; letter-spacing: .08em; }
+.stepper { display: flex; align-items: center; gap: 10px; }
+.stepper button { width: 34px; height: 34px; border-radius: 50%; background: var(--surface-2); color: #fff; font-size: 18px; font-weight: 700; }
+.toggle { width: 52px; height: 30px; border-radius: 999px; background: var(--surface-2); position: relative; flex: none; }
+.toggle i { position: absolute; top: 3px; left: 3px; width: 24px; height: 24px; border-radius: 50%; background: #666; transition: .2s; }
+.toggle.on { background: var(--lime); } .toggle.on i { left: 25px; background: #000; }
+.runbar { position: fixed; left: 16px; right: 16px; top: calc(10px + env(safe-area-inset-top)); z-index: 16; display: flex; justify-content: space-between; align-items: center; background: var(--lime); color: #000; border-radius: 999px; padding: 10px 16px; font-weight: 800; font-size: 14px; box-shadow: 0 8px 30px rgba(0,0,0,.6); }
+.runbar b { font-variant-numeric: tabular-nums; }
+body.has-runbar .screen { padding-top: 46px; }

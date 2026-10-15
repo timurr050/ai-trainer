@@ -8,11 +8,14 @@ src = pathlib.Path(__file__).parent
 root = src.parent
 t = (src / "index.template.html").read_text()
 css = (src / "styles.css").read_text()
-js = "\n".join((src / f).read_text() for f in ["data.js", "exdb.js"]) + "\n;\n" + (src / "app.js").read_text()
+app = (src / "app.js").read_text()
+assert app.count("// @@RUN@@") == 1
+app = app.replace("// @@RUN@@", (src / "run.js").read_text())
+js = "\n".join((src / f).read_text() for f in ["data.js", "exdb.js"]) + "\n;\n" + app
 
 # один файл
 full = t
-for mark, body in [("/*STYLES*/", css), ("/*DATA*/\n/*EXDB*/", (src / "data.js").read_text() + "\n" + (src / "exdb.js").read_text()), ("/*APP*/", (src / "app.js").read_text())]:
+for mark, body in [("/*STYLES*/", css), ("/*DATA*/\n/*EXDB*/", (src / "data.js").read_text() + "\n" + (src / "exdb.js").read_text()), ("/*APP*/", app)]:
     assert full.count(mark) == 1, mark
     full = full.replace(mark, body)
 (root / "standalone.html").write_text(full)
