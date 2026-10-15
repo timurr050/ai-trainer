@@ -297,6 +297,8 @@ function resetAll() {
 // ===================== УТИЛИТЫ =====================
 const $app = document.getElementById("app");
 const $tabbar = document.getElementById("tabbar");
+// оболочка index.html может быть закэширована Telegram со старой кнопкой «Бег» — убираем её здесь
+{ const old = $tabbar.querySelector("[data-tab=run]"); if (old) old.remove(); }
 const img = (id, w, alt = "") => `<img src="${String(id).startsWith("http") ? id : IMG(id, w)}" alt="${esc(alt)}" loading="lazy" onerror="this.remove()">`;
 const DAYS = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"];
 const MONTHS = ["январь", "февраль", "март", "апрель", "май", "июнь", "июль", "август", "сентябрь", "октябрь", "ноябрь", "декабрь"];
@@ -572,7 +574,7 @@ function pop() { state.stack.pop(); navAnim = "back"; render(); const y = scroll
 $tabbar.addEventListener("click", (e) => { const b = e.target.closest("button"); if (!b) return; haptic(); go(b.dataset.tab); });
 if (tg) tg.BackButton.onClick(() => { haptic(); if (state.ob && state.obStep > 0) { state.obStep--; render(); } else if (state.ob && state.obReturn) { state.ob = null; render(); } else pop(); });
 
-const APP_VERSION = "3.11";
+const APP_VERSION = "3.11.1";
 let sessionClock = null;
 function render() {
   if (state.tab !== "timer") stopTicker();
