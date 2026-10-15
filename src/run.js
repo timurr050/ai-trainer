@@ -123,16 +123,17 @@ function runStart() {
 function runPause() { const r = store.run; if (!r || !r.seg) return; r.acc += Date.now() - r.seg; r.seg = null; save(); haptic("medium"); speak("Пауза"); render(); }
 function runResume() { const r = store.run; if (!r || r.seg) return; r.seg = Date.now(); r.segs.push([]); save(); haptic("medium"); speak("Продолжаем"); render(); }
 function simplify(pts, max) { if (pts.length <= max) return pts; const step = pts.length / max, out = []; for (let i = 0; i < max; i++) out.push(pts[Math.floor(i * step)]); out.push(pts[pts.length - 1]); return out; }
-function runFinish() {
+function runFinish(quiet) {
   const r = store.run; if (!r) return;
   if (r.seg) { r.acc += Date.now() - r.seg; r.seg = null; }
   const s = Math.round(r.acc / 1000);
   geoStop(); wakeOff(); store.run = null;
-  if (s < 20 && r.m < 30) { save(); render(); toast("Слишком короткая пробежка, не сохранил"); return; }
+  if (s < 20 && r.m < 30) { save(); if (!quiet) { render(); toast("Слишком короткая пробежка, не сохранил"); } return; }
   const total = r.segs.reduce((a, g) => a + g.length, 0), maxPts = 900;
   const segs = r.segs.filter((g) => g.length).map((g) => simplify(g, Math.max(2, Math.round((g.length / Math.max(1, total)) * maxPts))).map((p) => [Math.round(p[0] * 1e5) / 1e5, Math.round(p[1] * 1e5) / 1e5, Math.round(p[2])]));
   const run = { d: r.d, s, m: Math.round(r.m), k: Math.round(r.k), up: Math.round(r.up), sp: r.sp, segs };
   store.runs.unshift(run); save(); notify();
+  if (quiet) return;
   speak(`Пробежка завершена. ${km(r.m).replace(".", ",")} километра за ${ruMin(s)}.`);
   state.stack = [{ type: "run", i: 0, fresh: true }]; render(); window.scrollTo(0, 0);
 }
@@ -280,4 +281,5 @@ function renderRunBar() {
   el.innerHTML = `<span>🏃 ${store.run.seg ? "Бег идёт" : "Пауза"}</span><b>${hms(runElapsed())} · ${km(store.run.m)} км</b>`;
 }
 setInterval(() => { if (store.run) paintRun(); }, 1000);
-if (store.run) { geoStart(); state.tab = "run"; }
+// вкладку «Бег» убрали в v3.11: незавершённую пробежку сохраняем в историю, прошлые пробежки там же
+if (store.run) runFinish(true);

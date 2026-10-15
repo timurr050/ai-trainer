@@ -346,7 +346,7 @@ function pop() { state.stack.pop(); navAnim = "back"; render(); const y = scroll
 $tabbar.addEventListener("click", (e) => { const b = e.target.closest("button"); if (!b) return; haptic(); go(b.dataset.tab); });
 if (tg) tg.BackButton.onClick(() => { haptic(); if (state.ob && state.obStep > 0) { state.obStep--; render(); } else if (state.ob && state.obReturn) { state.ob = null; render(); } else pop(); });
 
-const APP_VERSION = "3.10";
+const APP_VERSION = "3.11";
 let sessionClock = null;
 function render() {
   if (state.tab !== "timer") stopTicker();
@@ -835,7 +835,7 @@ function viewTimer() {
 function viewHistory() {
   const H = store.history, R = store.runs || [];
   if (!H.length && !R.length) return `<div class="top"><div><div class="eyebrow">Твои занятия</div><div class="h1" style="margin-top:8px">История</div></div></div>
-    <div class="empty"><div class="big">📭</div><b>Пока пусто</b><p>Здесь появятся твои тренировки и пробежки. Начни первую, и я буду следить за прогрессом.</p><button class="btn" data-gocoach>К тренировке</button></div>`;
+    <div class="empty"><div class="big">📭</div><b>Пока пусто</b><p>Здесь появятся твои тренировки. Начни первую, и я буду следить за прогрессом.</p><button class="btn" data-gocoach>К тренировке</button></div>`;
   const mins = H.reduce((s, h) => s + h.m, 0) + Math.round(R.reduce((s, x) => s + x.s, 0) / 60), vol = H.reduce((s, h) => s + h.v, 0), runKm = R.reduce((s, x) => s + x.m, 0) / 1000;
   const days = new Map(), addDay = (d, m) => { const k = new Date(d).toDateString(); days.set(k, (days.get(k) || 0) + m); };
   H.forEach((h) => addDay(h.d, h.m)); R.forEach((x) => addDay(x.d, x.s / 60));
