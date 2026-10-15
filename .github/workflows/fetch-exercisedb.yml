@@ -1,0 +1,23 @@
+name: Fetch ExerciseDB
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: [".github/workflows/fetch-exercisedb.yml", "tools/fetch_exercisedb.mjs"]
+permissions:
+  contents: write
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: node tools/fetch_exercisedb.mjs
+      - name: Commit
+        run: |
+          git config user.name "timurr050"
+          git config user.email "13timm@gmail.com"
+          git add tools/exercisedb.json tools/exercisedb-log.txt
+          git commit -m "Обновлена выгрузка ExerciseDB" || echo "no changes"
+          git push
