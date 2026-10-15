@@ -1,0 +1,36 @@
+name: Fetch workout music
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: [".github/workflows/fetch-music.yml", "tools/music.txt"]
+permissions:
+  contents: write
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg >/dev/null
+      - name: Download and compress
+        run: |
+          mkdir -p music tmp
+          : > tools/music-log.txt
+          grep -v '^#' tools/music.txt | grep -v '^\s*$' | while read -r name; do
+            enc=$(printf '%s' "$name" | sed 's/ /%20/g')
+            slug=$(printf '%s' "$name" | tr 'A-Z ' 'a-z-')
+            if curl -sfL --max-time 120 -A "Mozilla/5.0" -o "tmp/$slug.mp3" "https://incompetech.com/music/royalty-free/mp3-royaltyfree/$enc.mp3"; then
+              ffmpeg -loglevel error -y -i "tmp/$slug.mp3" -ac 2 -b:a 112k "music/$slug.mp3"
+              dur=$(ffprobe -v error -show_entries format=duration -of csv=p=0 "music/$slug.mp3" | cut -d. -f1)
+              echo "ok|$slug|$name|$dur|$(stat -c%s music/$slug.mp3)" | tee -a tools/music-log.txt
+            else
+              echo "fail|$slug|$name" | tee -a tools/music-log.txt
+            fi
+          done
+      - name: Commit
+        run: |
+          git config user.name "timurr050"
+          git config user.email "13timm@gmail.com"
+          git add music tools/music-log.txt
+          git commit -m "Музыка для тренировок (Kevin MacLeod, CC BY 4.0)" || echo "no changes"
+          git pull --rebase -q origin main && git push
