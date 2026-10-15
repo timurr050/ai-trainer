@@ -353,3 +353,25 @@ body.has-runbar .screen { padding-top: 46px; }
 .age-card { margin-bottom: 12px; }
 .age-card .title { font-weight: 700; font-size: 16px; }
 .age-card .sub { color: var(--muted); font-size: 13px; margin-top: 3px; }
+
+/* ===== Музыка ===== */
+.musicbar { position: fixed; left: 16px; right: 16px; top: calc(10px + env(safe-area-inset-top)); z-index: 16; display: flex; align-items: center; gap: 10px; background: rgba(26,26,26,.94); backdrop-filter: blur(16px); border: 1px solid var(--line); border-radius: 999px; padding: 6px 6px 6px 14px; font-size: 14px; box-shadow: 0 8px 30px rgba(0,0,0,.6); max-width: 528px; margin: 0 auto; animation: fade .2s; }
+.musicbar b { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 700; }
+.musicbar button { width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; font-size: 13px; flex: none; }
+.musicbar button[data-m="toggle"] { background: var(--lime); color: #000; font-weight: 900; }
+.musicbar button[data-m="close"] { color: var(--muted); }
+body.has-musicbar .screen { padding-top: 52px; }
+.eq { display: flex; align-items: flex-end; gap: 2px; height: 14px; flex: none; }
+.eq i { width: 3px; height: 4px; background: var(--lime); border-radius: 2px; }
+.eq.on i { animation: eqb .9s ease-in-out infinite; }
+.eq.on i:nth-child(2) { animation-delay: .2s; }
+.eq.on i:nth-child(3) { animation-delay: .45s; }
+@keyframes eqb { 0%, 100% { height: 4px; } 50% { height: 14px; } }
+.music-now { text-align: center; padding: 24px 18px; }
+.music-now .title { font-family: var(--display); font-size: 22px; font-weight: 700; margin-top: 10px; }
+.music-now .sub { color: var(--muted); margin-top: 4px; }
+.music-ctl { display: flex; justify-content: center; align-items: center; gap: 18px; margin-top: 18px; }
+.music-ctl button { width: 52px; height: 52px; border-radius: 50%; background: var(--surface-2); font-size: 18px; }
+.music-ctl button.big { width: 72px; height: 72px; background: var(--lime); color: #000; font-size: 24px; font-weight: 900; }
+.row.track { padding: 14px 16px; }
+.row.track.cur .title { color: var(--lime); }

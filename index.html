@@ -9,10 +9,10 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@500;700;900&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-<style>html,body{background:#000;margin:0}</style>
+<style>html,body{background:#000;margin:0}body:not(.ready) #tabbar{display:none}.boot{position:fixed;inset:0;display:grid;place-items:center}.boot i{width:34px;height:34px;border-radius:50%;border:3px solid #262626;border-top-color:#ccff00;animation:bs .8s linear infinite}@keyframes bs{to{transform:rotate(360deg)}}</style>
 </head>
 <body>
-<main id="app"></main>
+<main id="app"><div class="boot"><i></i></div></main>
 
 <nav class="tabbar" id="tabbar">
   <button data-tab="coach" class="active">

@@ -71,6 +71,7 @@ function resetAll() {
 // ===================== УТИЛИТЫ =====================
 const $app = document.getElementById("app");
 const $tabbar = document.getElementById("tabbar");
+document.body.classList.add("ready");
 // оболочка index.html может быть закэширована Telegram со старой кнопкой «Бег» — убираем её здесь
 { const old = $tabbar.querySelector("[data-tab=run]"); if (old) old.remove(); }
 const img = (id, w, alt = "") => `<img src="${String(id).startsWith("http") ? id : IMG(id, w)}" alt="${esc(alt)}" loading="lazy" onerror="this.remove()">`;
@@ -348,7 +349,7 @@ function pop() { state.stack.pop(); navAnim = "back"; render(); const y = scroll
 $tabbar.addEventListener("click", (e) => { const b = e.target.closest("button"); if (!b) return; haptic(); go(b.dataset.tab); });
 if (tg) tg.BackButton.onClick(() => { haptic(); if (state.ob && state.obStep > 0) { state.obStep--; render(); } else if (state.ob && state.obReturn) { state.ob = null; render(); } else pop(); });
 
-const APP_VERSION = "3.11.1";
+const APP_VERSION = "3.11.2";
 let sessionClock = null;
 function render() {
   if (state.tab !== "timer") stopTicker();
@@ -361,7 +362,7 @@ function render() {
   if (reuse) {}
   else if (adm.flag.banned) html = viewBanned();
   else if (onboarding) html = viewOnboarding();
-  else if (top) html = ({ preview: viewPreview, session: viewSession, exercise: viewExercise, settings: viewSettings, builder: viewBuilder, run: viewRunDetail, admin: viewAdmin, admin_user: viewAdminUser, chat: viewChat })[top.type](top);
+  else if (top) html = ({ preview: viewPreview, session: viewSession, exercise: viewExercise, settings: viewSettings, builder: viewBuilder, run: viewRunDetail, admin: viewAdmin, admin_user: viewAdminUser, chat: viewChat, music: viewMusic })[top.type](top);
   else html = { coach: viewCoach, catalog: viewCatalog, run: viewRun, timer: viewTimer, history: viewHistory, progress: viewProgress }[state.tab]();
   killMap();
   if (reuse) $app.replaceChildren(...reuse.nodes);
@@ -382,6 +383,7 @@ function render() {
     try { tg.MainButton.hide(); } catch (e) {}
   }
   renderRestBar();
+  renderMusicBar();
   bind();
   if (!onboarding) { afterRunRender(); renderRunBar(); }
 }
@@ -489,7 +491,7 @@ function viewCoach() {
   return `
   <div class="top">
     <div><div class="eyebrow">Привет, ${userName}</div><div class="h1" style="margin-top:8px">Время<br><span class="lime">качаться</span></div></div>
-    <button class="icon-btn" data-settings aria-label="Настройки">⚙️</button>
+    <div style="display:flex;gap:8px"><button class="icon-btn" data-music aria-label="Музыка">🎵</button><button class="icon-btn" data-settings aria-label="Настройки">⚙️</button></div>
   </div>
   ${session}${!p.age ? `<div class="card age-card"><div class="title">Сколько тебе лет?</div><div class="sub">Подстрою нагрузку и советы тренера под возраст</div>${ageButtons(0)}</div>` : ""}${hero}
   ${p.goal === "gto" ? `<button class="row ask-coach" data-gto-norms><div class="thumb">🏅</div><div class="grow"><div class="title">Мои нормативы ГТО</div><div class="sub">Спроси тренера, что сдавать в твоём возрасте</div></div><span class="chev">›</span></button>` : ""}
@@ -576,7 +578,7 @@ function viewSession() {
   const total = s.items.reduce((a, it) => a + it.sets, 0), done = s.items.reduce((a, it) => a + it.done.filter(Boolean).length, 0);
   return `
   <div class="top"><div><div class="eyebrow">${esc(s.title)}</div><div class="h1" style="margin-top:8px;font-variant-numeric:tabular-nums" id="s-clock">${fmt(Math.floor((Date.now() - s.startedAt) / 1000))}</div></div>
-    <button class="icon-btn" data-back aria-label="Свернуть">✕</button></div>
+    <div style="display:flex;gap:8px"><button class="icon-btn" data-music aria-label="Музыка">🎵</button><button class="icon-btn" data-back aria-label="Свернуть">✕</button></div></div>
   <div class="card" style="padding:14px 18px"><div class="section-head" style="margin:0"><span class="eyebrow">Подходы</span><b>${done} / ${total}</b></div>
     <div class="tr" style="height:8px;border-radius:6px;background:var(--surface-2);margin-top:10px;overflow:hidden"><i style="display:block;height:100%;width:${(done / total) * 100}%;background:var(--lime)"></i></div></div>
   <div class="list section" style="margin-top:12px">${s.items.map((it, i) => { const e = exById(it.id); const all = it.done.every(Boolean); return `
@@ -749,6 +751,7 @@ function setRemind(patch) {
 
 // @@ADMIN@@
 // @@CHAT@@
+// @@MUSIC@@
 
 // ===================== НАСТРОЙКИ =====================
 function viewSettings() {
@@ -990,6 +993,7 @@ function bind() {
   on("[data-rtime]", (el) => { const [k, t] = el.dataset.rtime.split(/:(.+)/); setRemind({ [k]: t }); });
   bindAdmin(on);
   bindChat(on);
+  bindMusic(on);
   on("[data-chat]", () => push({ type: "chat" }));
   on("[data-remind-test]", () => syncRemind({ action: "test" }).then((res) => toast(res && res.ok ? "Отправил тестовое сообщение в чат" : "Не получилось, проверь, что бот не заблокирован")));
   // бег
