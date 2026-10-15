@@ -11,6 +11,6 @@
    - `BOT_TOKEN`, тип Secret: токен бота из @BotFather;
    - `APP_URL`, тип Text: `https://timurr050.github.io/ai-trainer/`.
 6. Settings → Trigger events → Add → Cron: `*/15 * * * *`.
-7. Скопируйте адрес воркера (`https://….workers.dev`) и впишите его в `REMIND_URL` в `src/app.js`, затем `python3 src/build.py`.
+7. (Сделано: воркер выкладывается сам через GitHub Actions, адрес https://ai-trainer.tim9728.workers.dev.) Скопируйте адрес воркера (`https://….workers.dev`) и впишите его в `REMIND_URL` в `src/app.js`, затем `python3 src/build.py`.
 
 Проверка подписи Telegram (initData) не даёт чужим людям менять чужие напоминания.
