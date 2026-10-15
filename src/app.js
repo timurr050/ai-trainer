@@ -552,7 +552,7 @@ function viewCatalog() {
     <button class="tile${e.db ? " tile-db" : ""}" data-ex="${e.id}">${pic(e, 500)}${store.basket.includes(e.id) ? `<span class="in-basket">✓</span>` : ""}
       <div class="cap"><span>${GROUPS[e.group].name}${e.eq.length ? "" : " · свой вес"}</span><b>${e.name}</b></div></button>`).join("") || `<div class="muted">Ничего не найдено</div>`}</div>
   ${n > shown.length ? `<div class="section"><button class="btn dark block" data-more>Показать ещё (${n - shown.length})</button></div>` : ""}
-  <div class="muted" style="font-size:12px;margin:18px 0 0;text-align:center">База упражнений: free-exercise-db (общественное достояние)</div>`;
+  <div class="muted" style="font-size:12px;margin:18px 0 0;text-align:center">База упражнений: free-exercise-db (общественное достояние) · версия 3.1</div>`;
 }
 function basketBar() {
   const n = store.basket.length;
