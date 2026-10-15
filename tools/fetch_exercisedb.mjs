@@ -42,6 +42,16 @@ for (const base of BASES) {
 }
 const uniq = all ? [...new Map(all.map((e) => [e.exerciseId || e.id, e])).values()] : [];
 log.push(`got ${uniq.length}`);
+// проверка: отдаются ли GIF при открытии из мини-приложения (с Referer GitHub Pages)
+for (const e of uniq.slice(0, 3)) {
+  for (const ref of [null, "https://timurr050.github.io/"]) {
+    try {
+      const r = await fetch(e.gifUrl, { headers: ref ? { Referer: ref, Origin: "https://timurr050.github.io" } : {} });
+      const b = await r.arrayBuffer();
+      log.push(`gif ${r.status} ref=${ref} ${b.byteLength}B ${r.headers.get("content-type")} acao=${r.headers.get("access-control-allow-origin")} cache=${r.headers.get("cache-control")}`);
+    } catch (err) { log.push(`gif ERR ${err.message}`); }
+  }
+}
 fs.writeFileSync("tools/exercisedb-log.txt", log.join("\n") + "\n");
 if (uniq.length) fs.writeFileSync("tools/exercisedb.json", JSON.stringify(uniq));
 else fs.writeFileSync("tools/exercisedb.json", "[]");
