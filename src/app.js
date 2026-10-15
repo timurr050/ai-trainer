@@ -231,8 +231,11 @@ function understood(f) {
 }
 
 // ===================== AI-ТРЕНЕР: подбор =====================
+// до 16 лет без штанги, «прочего» снаряда и взрывных упражнений с гирей
+const KID_BAN_EQ = ["barbell", "other"], KID_BAN = new Set(["kb_snatch", "deadlift"]);
 function canDo(ex, p, levelBoost = 0) {
   const have = new Set(p.eq);
+  if (isKid(p) && (KID_BAN.has(ex.id) || ex.eq.some((req) => req.split("|").every((x) => KID_BAN_EQ.includes(x))))) return false;
   if (ex.where && ex.where !== p.place) return false;
   if (ex.level > p.level + levelBoost) return false;
   if (p.level >= 2 && EASY.has(ex.id)) return false;
@@ -249,10 +252,18 @@ function scheme(ex, p) {
     strength: ex.compound && isWeighted(ex) ? { sets: 5, reps: 5, rest: 150, sec: 45 } : { sets: 4, reps: 8, rest: 90, sec: 45 },
     endurance: { sets: 3, reps: 20, rest: 30, sec: 50 },
     fit: { sets: 3, reps: 12, rest: 60, sec: 40 },
+    gto: { sets: 3, reps: 12, rest: 60, sec: 30 },
   }[p.goal] || { sets: 3, reps: 12, rest: 60, sec: 40 };
+  // подросткам — без тяжёлых силовых схем: не меньше 8 повторений, до 16 лет — не меньше 10
+  if (isTeen(p) && G.reps < 8) Object.assign(G, { sets: 4, reps: 8, rest: 90 });
+  if (isKid(p) && isWeighted(ex) && G.reps < 10) Object.assign(G, { sets: 3, reps: 12, rest: 75 });
   let sets = G.sets - (p.level === 1 ? 1 : 0) + (p.level === 3 && ex.compound ? 1 : 0);
   sets = Math.max(2, Math.min(6, sets));
   let reps = G.reps;
+  if (p.goal === "gto") {
+    if (ex.group === "back" && !isWeighted(ex)) reps = [5, 8, 12][p.level - 1] || 6;
+    if (ex.id === "long_jump") reps = 6;
+  }
   if (!isWeighted(ex) && (p.goal === "strength" || p.goal === "mass")) reps = ex.level >= 2 ? 8 : 15;
   const sec = Math.round((G.sec * (p.level === 1 ? 0.75 : p.level === 3 ? 1.4 : 1)) / 5) * 5;
   return { sets, reps: ex.unit === "s" ? sec : reps, unit: ex.unit, rest: G.rest };
@@ -268,6 +279,10 @@ function buildWorkout(title, groups, seed, p) {
     let pool = EXERCISES.filter((e) => e.group === g && !used.has(e.id) && canDo(e, p));
     if (!pool.length) pool = EXERCISES.filter((e) => e.group === g && !used.has(e.id) && canDo(e, p, 1));
     if (!pool.length) return null;
+    if (p.goal === "gto" && GTO_PREF[g]) {
+      const pref = GTO_PREF[g].map(exById).filter((e) => e && pool.includes(e));
+      if (pref.length) return !seenGroup.has(g) ? pref[0] : pref[Math.floor(r() * Math.min(pref.length, 3))];
+    }
     if (preferCompound) { const c = pool.filter((e) => e.compound); if (c.length) pool = c; }
     return pool[Math.floor(r() * pool.length)];
   };
@@ -287,6 +302,10 @@ function buildWorkout(title, groups, seed, p) {
 }
 
 function weekPlan(p) {
+  if (p.goal === "gto") {
+    let k = 0;
+    return DAYS.map((_, i) => { if (!SCHEDULES[p.days][i]) return null; const t = k++ % 2 ? "gtoB" : "gtoA"; return { type: t, ...GTO_DAYS[t] }; });
+  }
   const sch = { ...SCHEDULES[p.days] };
   if (p.goal === "lose" && p.days >= 3) { const last = Math.max(...Object.keys(sch).map(Number)); sch[last] = "cardio"; }
   return DAYS.map((_, i) => (sch[i] ? { type: sch[i], ...DAY_TYPES[sch[i]] } : null));
@@ -327,7 +346,7 @@ function pop() { state.stack.pop(); navAnim = "back"; render(); const y = scroll
 $tabbar.addEventListener("click", (e) => { const b = e.target.closest("button"); if (!b) return; haptic(); go(b.dataset.tab); });
 if (tg) tg.BackButton.onClick(() => { haptic(); if (state.ob && state.obStep > 0) { state.obStep--; render(); } else if (state.ob && state.obReturn) { state.ob = null; render(); } else pop(); });
 
-const APP_VERSION = "3.9.1";
+const APP_VERSION = "3.10";
 let sessionClock = null;
 function render() {
   if (state.tab !== "timer") stopTicker();
@@ -366,36 +385,48 @@ function render() {
 }
 
 // ===================== АНКЕТА =====================
-const OB_STEPS = 5;
+// Возраст: 10–17 — конкретный год, 18 — «18 и старше». До 16 лет без штанги и тяжёлых весов, до 18 — без силовых 5×5.
+const AGES = [10, 11, 12, 13, 14, 15, 16, 17, 18];
+const ageName = (a) => (a >= 18 ? "18 и старше" : `${a} ${plural(a, "год", "года", "лет")}`);
+const isTeen = (p) => !!p && p.age > 0 && p.age < 18;
+const isKid = (p) => !!p && p.age > 0 && p.age < 16;
+const ageButtons = (cur) => `<div class="row2 ages">${AGES.map((a) => `<button data-age="${a}" class="${cur === a ? "on" : ""}">${a >= 18 ? "18+" : a}</button>`).join("")}</div>`;
+const OB_STEPS = 6;
 function viewOnboarding() {
-  if (!state.ob) state.ob = { place: null, eq: [], goal: null, level: null, days: 3, minutes: 45, eqTouched: false };
+  if (!state.ob) state.ob = { age: null, place: null, eq: [], goal: null, level: null, days: 3, minutes: 45, eqTouched: false };
   const o = state.ob, s = state.obStep;
   const prog = `<div class="ob-progress">${Array.from({ length: OB_STEPS }, (_, i) => `<i class="${i <= s ? "on" : ""}"></i>`).join("")}</div>`;
   let body = "", canNext = true;
   if (s === 0) {
-    canNext = !!o.place;
+    canNext = !!o.age;
     body = `<div class="eyebrow">Привет, ${userName}! Я твой AI-тренер</div>
+      <div class="h1" style="margin-top:10px">Сколько <span class="lime">тебе лет?</span></div>
+      <div class="ob-sub">Подстрою нагрузку и советы под возраст. Для подростков упражнения безопаснее, а цель «Нормативы ГТО» поможет подготовиться к физкультуре.</div>
+      ${ageButtons(o.age)}`;
+  } else if (s === 1) {
+    canNext = !!o.place;
+    body = `<div class="eyebrow">Шаг 2 из ${OB_STEPS}</div>
       <div class="h1" style="margin-top:10px">Где ты <span class="lime">тренируешься?</span></div>
       <div class="ob-sub">Подберу упражнения под место и инвентарь. Всё можно поменять позже в настройках.</div>
       <div class="opts">${PLACES.map((pl) => `<button class="opt opt-photo ${o.place === pl.id ? "on" : ""}" data-place="${pl.id}">${img(pl.photo, 700)}
         <div><b style="font-family:var(--display);font-size:22px;text-transform:uppercase">${pl.emo} ${pl.name}</b><small>${pl.desc}</small></div></button>`).join("")}</div>`;
-  } else if (s === 1) {
-    body = `<div class="eyebrow">Шаг 2 из ${OB_STEPS}</div>
+  } else if (s === 2) {
+    body = `<div class="eyebrow">Шаг 3 из ${OB_STEPS}</div>
       <div class="h1" style="margin-top:10px">Что есть <span class="lime">под рукой?</span></div>
       <div class="ob-sub">Отметь весь доступный инвентарь. Если ничего нет, не страшно: подберу упражнения с собственным весом.</div>
       <div class="eq">${EQUIPMENT.map((e) => `<button data-eq="${e.id}" class="${o.eq.includes(e.id) ? "on" : ""}"><span>${e.emo}</span><b>${e.name}</b></button>`).join("")}</div>`;
-  } else if (s === 2) {
+  } else if (s === 3) {
     canNext = !!o.goal;
-    body = `<div class="eyebrow">Шаг 3 из ${OB_STEPS}</div>
+    body = `<div class="eyebrow">Шаг 4 из ${OB_STEPS}</div>
       <div class="h1" style="margin-top:10px">Какая <span class="lime">цель?</span></div>
       <div class="opts">${GOALS.map((g) => `<button class="opt ${o.goal === g.id ? "on" : ""}" data-goal="${g.id}"><div class="emo">${g.emo}</div><div><b>${g.name}</b><small>${g.desc}</small></div></button>`).join("")}</div>`;
-  } else if (s === 3) {
+  } else if (s === 4) {
     canNext = !!o.level;
-    body = `<div class="eyebrow">Шаг 4 из ${OB_STEPS}</div>
+    body = `<div class="eyebrow">Шаг 5 из ${OB_STEPS}</div>
       <div class="h1" style="margin-top:10px">Твой <span class="lime">уровень</span></div>
       <div class="opts">${LEVELS.map((l) => `<button class="opt ${o.level === l.id ? "on" : ""}" data-level="${l.id}"><div class="emo">${l.emo}</div><div><b>${l.name}</b><small>${l.desc}</small></div></button>`).join("")}</div>`;
   } else {
-    body = `<div class="eyebrow">Шаг 5 из ${OB_STEPS}</div>
+    body = `<div class="eyebrow">Шаг 6 из ${OB_STEPS}</div>
       <div class="h1" style="margin-top:10px">Сколько <span class="lime">времени?</span></div>
       <div class="h3 label">Тренировок в неделю</div>
       <div class="row2">${[2, 3, 4, 5, 6].map((n) => `<button data-days="${n}" class="${o.days === n ? "on" : ""}">${n}</button>`).join("")}</div>
@@ -408,10 +439,10 @@ function viewOnboarding() {
 }
 function finishOnboarding() {
   const o = state.ob;
-  store.profile = { ...(store.profile || {}), place: o.place, eq: o.eq, goal: o.goal, level: o.level, days: o.days, minutes: o.minutes, v3: 1 };
+  store.profile = { ...(store.profile || {}), age: o.age, place: o.place, eq: o.eq, goal: o.goal, level: o.level, days: o.days, minutes: o.minutes, v3: 1 };
   store.shuffle = {};
   state.ob = null; state.obStep = 0;
-  save(); notify(); syncRemind();
+  save(); notify(); syncRemind(); hello();
   if (state.obReturn) { state.obReturn = false; render(); toast("Настройки сохранены"); }
   else { go("coach"); toast("План готов 💪"); }
 }
@@ -458,7 +489,8 @@ function viewCoach() {
     <div><div class="eyebrow">Привет, ${userName}</div><div class="h1" style="margin-top:8px">Время<br><span class="lime">качаться</span></div></div>
     <button class="icon-btn" data-settings aria-label="Настройки">⚙️</button>
   </div>
-  ${session}${hero}
+  ${session}${!p.age ? `<div class="card age-card"><div class="title">Сколько тебе лет?</div><div class="sub">Подстрою нагрузку и советы тренера под возраст</div>${ageButtons(0)}</div>` : ""}${hero}
+  ${p.goal === "gto" ? `<button class="row ask-coach" data-gto-norms><div class="thumb">🏅</div><div class="grow"><div class="title">Мои нормативы ГТО</div><div class="sub">Спроси тренера, что сдавать в твоём возрасте</div></div><span class="chev">›</span></button>` : ""}
   <button class="row ask-coach" data-chat><div class="thumb">💬</div>
     <div class="grow"><div class="title">Спросить AI-тренера</div><div class="sub">Питание, техника, восстановление</div></div><span class="chev">›</span></button>
   <div class="stats section" style="margin-top:12px">
@@ -720,11 +752,12 @@ function setRemind(patch) {
 function viewSettings() {
   const p = store.profile;
   const rows = [
-    ["Место", PLACES.find((x) => x.id === p.place).emo + " " + PLACES.find((x) => x.id === p.place).name, 0],
-    ["Инвентарь", p.eq.length ? p.eq.map(eqName).join(", ") : "Только свой вес", 1],
-    ["Цель", GOALS.find((g) => g.id === p.goal).name, 2],
-    ["Уровень", LEVELS[p.level - 1].name, 3],
-    ["Расписание", `${p.days} × ${p.minutes} мин в неделю`, 4],
+    ["Возраст", p.age ? ageName(p.age) : "Не указан", 0],
+    ["Место", PLACES.find((x) => x.id === p.place).emo + " " + PLACES.find((x) => x.id === p.place).name, 1],
+    ["Инвентарь", p.eq.length ? p.eq.map(eqName).join(", ") : "Только свой вес", 2],
+    ["Цель", GOALS.find((g) => g.id === p.goal).name, 3],
+    ["Уровень", LEVELS[p.level - 1].name, 4],
+    ["Расписание", `${p.days} × ${p.minutes} мин в неделю`, 5],
   ];
   return `
   <div class="top"><div><button class="back" data-back style="background:var(--surface)">‹ Назад</button><div class="h1" style="margin-top:16px">Профиль</div></div></div>
@@ -901,6 +934,12 @@ function bind() {
   on("[data-place]", (el) => { const o = state.ob; o.place = el.dataset.place; if (!o.eqTouched) o.eq = [...PLACES.find((p) => p.id === o.place).eq]; render(); });
   on("[data-eq]", (el) => { const o = state.ob, id = el.dataset.eq; o.eqTouched = true; o.eq = o.eq.includes(id) ? o.eq.filter((x) => x !== id) : [...o.eq, id]; render(); });
   on("[data-goal]", (el) => { state.ob.goal = el.dataset.goal; render(); });
+  on("[data-age]", (el) => {
+    const a = +el.dataset.age;
+    if (state.ob) { state.ob.age = a; render(); return; }
+    store.profile.age = a; store.shuffle = {}; save(); notify(); hello(); render(); toast("Готово, план подстроен под возраст");
+  });
+  on("[data-gto-norms]", () => { push({ type: "chat" }); chatSend("Какие нормативы ГТО для моего возраста и как к ним подготовиться?"); });
   on("[data-level]", (el) => { state.ob.level = +el.dataset.level; render(); });
   on("[data-days]", (el) => { state.ob.days = +el.dataset.days; render(); });
   on("[data-min]", (el) => { state.ob.minutes = +el.dataset.min; render(); });

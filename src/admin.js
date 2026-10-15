@@ -16,7 +16,7 @@ const saveFlag = () => { try { localStorage.setItem("adm", JSON.stringify(adm.fl
 function hello() {
   const H = store.history, R = store.runs || [];
   const stats = { w: H.length, r: R.length };
-  const key = new Date().toDateString() + "|" + stats.w + "|" + stats.r;
+  const key = new Date().toDateString() + "|" + stats.w + "|" + stats.r + "|" + hash(JSON.stringify(store.profile || {}));
   try { if (localStorage.getItem("hello") === key) return; } catch (e) {}
   const freq = {};
   H.slice(0, 30).forEach((h) => (h.x || []).forEach(([id]) => (freq[id] = (freq[id] || 0) + 1)));
@@ -25,7 +25,7 @@ function hello() {
   let tz = ""; try { tz = Intl.DateTimeFormat().resolvedOptions().timeZone || ""; } catch (e) {}
   const src = (tg && tg.initDataUnsafe && tg.initDataUnsafe.start_param) || "";
   api({ action: "hello", stats, ex, tz, src,
-    profile: p ? { goal: p.goal, level: p.level, place: p.place, eq: p.eq, days: p.days, minutes: p.minutes } : null,
+    profile: p ? { goal: p.goal, level: p.level, place: p.place, eq: p.eq, days: p.days, minutes: p.minutes, age: p.age } : null,
     wk: H.slice(0, 15).map((h) => [String(h.d).slice(0, 10), h.t, h.m]),
     rn: R.slice(0, 10).map((r) => [String(r.d).slice(0, 10), Math.round(r.m || 0), Math.round(r.s || 0)]),
   }).then((res) => {

@@ -14,7 +14,8 @@ function chatLoad() {
   chat.loading = true;
   api({ action: "chat_history" }).then((r) => {
     chat.loading = false; chat.loaded = true;
-    if (r && r.ok) { chat.h = r.h || []; chat.left = r.left; chat.limit = r.limit; chat.err = ""; }
+    // сообщения, отправленные до загрузки истории, оставляем в конце
+    if (r && r.ok) { chat.h = [...(r.h || []), ...chat.h]; chat.left = r.left; chat.limit = r.limit; chat.err = ""; }
     else chat.err = tg && tg.initData ? "Не удалось загрузить чат, проверь интернет" : "Чат работает внутри Telegram";
     if (chatOpen()) { render(); chatScroll(); }
   });
@@ -26,7 +27,7 @@ const chatScroll = () => requestAnimationFrame(() => window.scrollTo(0, document
 function chatCtx() {
   const p = store.profile || {};
   return {
-    pr: { goal: p.goal, level: p.level, place: p.place, eq: (p.eq || []).map(eqName), days: p.days, minutes: p.minutes, weight: p.weight },
+    pr: { age: p.age, goal: p.goal, level: p.level, place: p.place, eq: (p.eq || []).map(eqName), days: p.days, minutes: p.minutes, weight: p.weight },
     wk: store.history.slice(0, 8).map((h) => [String(h.d).slice(0, 10), h.t, h.m]),
     rn: (store.runs || []).slice(0, 5).map((r) => [String(r.d).slice(0, 10), Math.round(r.m || 0), Math.round(r.s || 0)]),
   };

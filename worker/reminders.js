@@ -164,7 +164,7 @@ async function touch(env, user, body = {}, src = "app") {
     st: src === "start" ? 1 : m.st || 0, b: 0, x: m.x || 0, nd: m.nd || "", ms: m.ms || 0,
   };
   const val = { ...v0 };
-  if (pr) val.pr = { goal: pr.goal, level: pr.level, place: pr.place, eq: (pr.eq || []).slice(0, 20), days: pr.days, minutes: pr.minutes };
+  if (pr) val.pr = { goal: pr.goal, level: pr.level, place: pr.place, eq: (pr.eq || []).slice(0, 20), days: pr.days, minutes: pr.minutes, age: +pr.age || undefined };
   if (Array.isArray(body.wk)) val.wk = body.wk.slice(0, 15);
   if (Array.isArray(body.rn)) val.rn = body.rn.slice(0, 10);
   const same = m0 && Object.keys(n).every((k) => m[k] === n[k]) && !body.wk;
@@ -587,7 +587,8 @@ async function service(req, env, url) {
   if (url.pathname === "/setup") { const r = await setWebhook(env, url.origin); const info = await tgApi(env, "getWebhookInfo", {}); return json({ ok: r.status === 200, tg: r.j, allowed: info.j && info.j.result && info.j.result.allowed_updates }); }
   const q = url.searchParams.get("q") || "Составь план питания на 1800 ккал на день для мужчины 30 лет";
   const t0 = Date.now();
-  const r = await ask(env, { id: 0, first_name: "Тест" }, q, {}, true);
+  const age = +url.searchParams.get("age") || 0;
+  const r = await ask(env, { id: 0, first_name: "Тест" }, q, age ? { pr: { age } } : {}, true);
   let pdf = 0, pdfErr = "";
   if (r.ok) try { pdf = (await makePdf(r.text, pdfTitle(r.text, q), "Тест")).length; } catch (e) { pdfErr = String(e && e.stack || e); }
   await env.REMINDERS.delete("c0");
