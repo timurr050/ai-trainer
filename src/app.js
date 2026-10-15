@@ -327,7 +327,7 @@ function pop() { state.stack.pop(); navAnim = "back"; render(); const y = scroll
 $tabbar.addEventListener("click", (e) => { const b = e.target.closest("button"); if (!b) return; haptic(); go(b.dataset.tab); });
 if (tg) tg.BackButton.onClick(() => { haptic(); if (state.ob && state.obStep > 0) { state.obStep--; render(); } else if (state.ob && state.obReturn) { state.ob = null; render(); } else pop(); });
 
-const APP_VERSION = "3.9";
+const APP_VERSION = "3.9.1";
 let sessionClock = null;
 function render() {
   if (state.tab !== "timer") stopTicker();
@@ -460,7 +460,7 @@ function viewCoach() {
   </div>
   ${session}${hero}
   <button class="row ask-coach" data-chat><div class="thumb">💬</div>
-    <div class="grow"><div class="title">Спросить AI-тренера</div><div class="sub">Питание, техника, восстановление. План питания в PDF</div></div><span class="chev">›</span></button>
+    <div class="grow"><div class="title">Спросить AI-тренера</div><div class="sub">Питание, техника, восстановление</div></div><span class="chev">›</span></button>
   <div class="stats section" style="margin-top:12px">
     <div class="stat"><div class="big-num lime">${st.count}/${p.days}</div><div class="eyebrow">за неделю</div></div>
     <div class="stat"><div class="big-num">${st.minutes}</div><div class="eyebrow">минут</div></div>

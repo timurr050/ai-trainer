@@ -537,7 +537,7 @@ function pop() { state.stack.pop(); navAnim = "back"; render(); const y = scroll
 $tabbar.addEventListener("click", (e) => { const b = e.target.closest("button"); if (!b) return; haptic(); go(b.dataset.tab); });
 if (tg) tg.BackButton.onClick(() => { haptic(); if (state.ob && state.obStep > 0) { state.obStep--; render(); } else if (state.ob && state.obReturn) { state.ob = null; render(); } else pop(); });
 
-const APP_VERSION = "3.9";
+const APP_VERSION = "3.9.1";
 let sessionClock = null;
 function render() {
   if (state.tab !== "timer") stopTicker();
@@ -670,7 +670,7 @@ function viewCoach() {
   </div>
   ${session}${hero}
   <button class="row ask-coach" data-chat><div class="thumb">💬</div>
-    <div class="grow"><div class="title">Спросить AI-тренера</div><div class="sub">Питание, техника, восстановление. План питания в PDF</div></div><span class="chev">›</span></button>
+    <div class="grow"><div class="title">Спросить AI-тренера</div><div class="sub">Питание, техника, восстановление</div></div><span class="chev">›</span></button>
   <div class="stats section" style="margin-top:12px">
     <div class="stat"><div class="big-num lime">${st.count}/${p.days}</div><div class="eyebrow">за неделю</div></div>
     <div class="stat"><div class="big-num">${st.minutes}</div><div class="eyebrow">минут</div></div>
@@ -1275,7 +1275,7 @@ function bindAdmin(on) {
 
 // ===================== ЧАТ С AI-ТРЕНЕРОМ =====================
 // История общая с чатом бота: что спросил в боте, видно здесь, и наоборот. Хранится на сервере.
-const chat = { h: [], left: null, limit: 20, loaded: false, loading: false, sending: false, draft: "", err: "", pdf: {} };
+const chat = { h: [], left: null, limit: 20, loaded: false, loading: false, sending: false, draft: "", err: "" };
 const CHAT_IDEAS = [
   "Составь план питания на 1800 ккал",
   "Как быстрее восстановиться после тренировки?",
@@ -1316,20 +1316,14 @@ function chatSend(text) {
   render(); chatScroll();
   api({ action: "chat", q: text, ctx: chatCtx() }).then((r) => {
     chat.sending = false;
-    if (r && r.ok) { chat.h.push({ r: "a", c: r.text, t: r.t }); chat.left = r.left; }
+    if (r && r.ok) {
+      chat.h.push({ r: "a", c: r.text, t: r.t });
+      if (r.note) { try { tg.HapticFeedback.notificationOccurred("success"); } catch (e) {} }
+      else chat.left = r.left;
+      if (r.pdfSent) chat.h.push({ r: "a", c: "📄 PDF с этим ответом отправил в чат с ботом.", t: r.t + 1 });
+    }
     else { chat.h.push({ r: "e", c: (r && r.text) || "Нет связи с тренером. Проверь интернет и попробуй ещё раз.", t: Date.now() }); if (r && r.error === "limit") chat.left = 0; }
     if (chatOpen()) { render(); chatScroll(); }
-  });
-}
-
-function chatPdf(t) {
-  if (chat.pdf[t]) return;
-  chat.pdf[t] = "wait"; render();
-  api({ action: "chat_pdf", t }).then((r) => {
-    chat.pdf[t] = r && r.ok ? "ok" : "";
-    if (r && r.ok) { try { tg.HapticFeedback.notificationOccurred("success"); } catch (e) {} }
-    else toast("Не получилось отправить PDF");
-    if (chatOpen()) render();
   });
 }
 
@@ -1359,19 +1353,16 @@ function mdHtml(md) {
   closeList();
   return out.join("");
 }
-const isPlan = (t) => t.length > 700 || /^\s*\|.*\|/m.test(t) || /^#{1,3}\s/m.test(t);
 
 function viewChat() {
   if (!chat.loaded && !chat.loading) chatLoad();
   const msgs = chat.h.map((m) => {
     if (m.r === "u") return `<div class="msg me">${esc(m.c).replace(/\n/g, "<br>")}</div>`;
     if (m.r === "e") return `<div class="msg ai err">${esc(m.c)}</div>`;
-    const st = chat.pdf[m.t];
-    const pdf = isPlan(m.c) ? `<button class="pdf-btn ${st === "ok" ? "done" : ""}" data-chat-pdf="${m.t}">${st === "wait" ? "Готовлю PDF…" : st === "ok" ? "✓ PDF отправлен в чат с ботом" : "📄 Получить PDF"}</button>` : "";
-    return `<div class="msg ai"><div class="md">${mdHtml(m.c)}</div>${pdf}</div>`;
+    return `<div class="msg ai"><div class="md">${mdHtml(m.c)}</div></div>`;
   }).join("");
   const empty = !chat.h.length && !chat.loading
-    ? `<div class="coach" style="margin-top:4px"><div class="ava">AI</div><p>Привет, ${userName}! Я AI-тренер. Спрашивай про тренировки, технику, бег, восстановление и питание. Могу составить план питания и прислать его в PDF.</p></div>
+    ? `<div class="coach" style="margin-top:4px"><div class="ava">AI</div><p>Привет, ${userName}! Я AI-тренер. Спрашивай про тренировки, технику, бег, восстановление и питание. Могу составить план питания, а если напишешь «пришли в pdf», пришлю его файлом.</p></div>
        <div class="eyebrow" style="margin:18px 0 10px">Например</div>
        <div class="chat-ideas">${CHAT_IDEAS.map((q) => `<button class="chip" data-chat-idea="${esc(q)}">${esc(q)}</button>`).join("")}</div>`
     : "";
@@ -1398,8 +1389,7 @@ function bindChat(on) {
   grow();
   on("[data-chat-send]", () => chatSend(ta.value));
   on("[data-chat-idea]", (el) => chatSend(el.dataset.chatIdea));
-  on("[data-chat-pdf]", (el) => chatPdf(+el.dataset.chatPdf));
-  on("[data-chat-reset]", () => { chat.h = []; chat.pdf = {}; render(); api({ action: "chat_reset" }); });
+  on("[data-chat-reset]", () => { chat.h = []; render(); api({ action: "chat_reset" }); });
 }
 
 

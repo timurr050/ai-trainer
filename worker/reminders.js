@@ -13,7 +13,7 @@
 // читался одним запросом), admin — ID владельца (первый, кто нажал «Стать администратором»).
 // Бот: Telegram шлёт сюда обновления на /tg (вебхук ставится из админ-панели), отвечаем на /start.
 
-import { ask, chatHistory, chatReset, makePdf, pdfTitle, looksLikePlan, toTelegram, splitMsg } from "./coach.js";
+import { ask, chatHistory, chatReset, makePdf, pdfTitle, pdfIntent, toTelegram, splitMsg } from "./coach.js";
 
 const CORS = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Methods": "POST, OPTIONS", "Access-Control-Allow-Headers": "Content-Type" };
 const json = (o, status = 200) => new Response(JSON.stringify(o), { status, headers: { "Content-Type": "application/json", ...CORS } });
@@ -517,16 +517,21 @@ async function botAsk(env, m, isAdm) {
   const { val } = await getUser(env, from.id);
   const q = m.text.replace(/^\/(coach|trainer)(@\w+)?\s*/, "");
   if (!q.trim()) { await tgApi(env, "sendMessage", { chat_id: m.chat.id, text: "Напиши вопрос про тренировки, бег или питание, я отвечу 💪" }); return; }
+  const want = pdfIntent(q);
+  // «пришли в пдф» — отправляем файлом последний ответ тренера, без нового запроса к ИИ
+  if (want === "only") {
+    await tgApi(env, "sendChatAction", { chat_id: m.chat.id, action: "upload_document" });
+    if (!(await sendPdf(env, m.chat.id, from))) await tgApi(env, "sendMessage", { chat_id: m.chat.id, text: "Пока нечего отправить. Сначала спроси, например, «составь план питания на 1800 ккал», а потом напиши «пришли в pdf»." });
+    return;
+  }
   const r = await ask(env, from, q, val, isAdm);
   if (!r.ok) { await tgApi(env, "sendMessage", { chat_id: m.chat.id, text: r.text }); return; }
-  const parts = splitMsg(toTelegram(r.text));
-  for (let i = 0; i < parts.length; i++) {
-    const last = i === parts.length - 1;
-    const kb = last && looksLikePlan(r.text) ? { inline_keyboard: [[{ text: "📄 Скачать PDF", callback_data: "pdf:" + r.t }]] } : undefined;
-    const res = await tgApi(env, "sendMessage", { chat_id: m.chat.id, text: parts[i], parse_mode: "HTML", reply_markup: kb });
+  for (const part of splitMsg(toTelegram(r.text))) {
+    const res = await tgApi(env, "sendMessage", { chat_id: m.chat.id, text: part, parse_mode: "HTML" });
     // если HTML не прошёл проверку Telegram — отправляем обычным текстом
-    if (res.status === 400) await tgApi(env, "sendMessage", { chat_id: m.chat.id, text: parts[i].replace(/<[^>]+>/g, "").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&"), reply_markup: kb });
+    if (res.status === 400) await tgApi(env, "sendMessage", { chat_id: m.chat.id, text: part.replace(/<[^>]+>/g, "").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&") });
   }
+  if (want === "also") { await tgApi(env, "sendChatAction", { chat_id: m.chat.id, action: "upload_document" }); await sendPdf(env, m.chat.id, from, r.t); }
 }
 
 async function sendPdf(env, chatId, user, msgT) {
@@ -564,8 +569,14 @@ async function chatApi(env, user, body) {
     if (!meta) await touch(env, user, {}, "app");
     // приложение присылает свежий профиль и последние тренировки; если нет — берём карточку с сервера
     const ctx = body.ctx && typeof body.ctx === "object" && JSON.stringify(body.ctx).length < 6000 ? body.ctx : val;
+    const want = pdfIntent(String(body.q || ""));
+    if (want === "only") {
+      const ok = await sendPdf(env, user.id, user);
+      return json({ ok: true, note: true, t: Date.now(), text: ok ? "📄 Готово! Отправил PDF в чат с ботом, открой его в Telegram." : "Пока нечего отправить. Сначала спроси, например, «составь план питания на 1800 ккал», а потом напиши «пришли в pdf»." });
+    }
     const r = await ask(env, user, body.q, ctx, await isAdmin(env, user.id));
-    return json({ ...r, plan: r.ok && looksLikePlan(r.text) });
+    if (r.ok && want === "also") r.pdfSent = await sendPdf(env, user.id, user, r.t);
+    return json(r);
   }
   return json({ ok: false, error: "unknown action" }, 400);
 }
