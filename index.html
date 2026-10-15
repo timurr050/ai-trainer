@@ -269,11 +269,11 @@ img { display: block; }
 .basket-bar .x { width: 52px; height: 52px; border-radius: 50%; background: var(--surface-2); color: #fff; font-size: 16px; box-shadow: 0 8px 30px rgba(0,0,0,.6); }
 .ph { position: absolute; inset: 0; display: grid; place-items: center; font-size: 64px; background: radial-gradient(circle at 50% 40%, #3a4a00, #0d0d0d 70%); }
 .thumb .ph { font-size: 28px; }
-.anim { position: absolute; inset: 0; --ph: 0; --dur: 2.4s; cursor: pointer; }
-.anim img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
-.anim .f1 { opacity: var(--ph); }
-.anim.playing .f1 { animation: phase var(--dur) ease-in-out infinite; }
-@keyframes phase { 0%, 15% { opacity: 0; } 45%, 65% { opacity: 1; } 95%, 100% { opacity: 0; } }
+.anim { position: absolute; inset: 0; cursor: pointer; overflow: hidden; --zoom: 1; }
+.anim img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; transform: scale(var(--zoom)); }
+.anim .f1 { opacity: 0; }
+.demo-cap { position: absolute; left: 16px; right: 16px; bottom: 76px; z-index: 2; font-weight: 600; font-size: 15px; line-height: 1.3; text-shadow: 0 1px 8px #000; }
+.demo-rep { position: absolute; top: 18px; right: 16px; z-index: 2; background: var(--lime); color: #000; font-weight: 800; font-size: 13px; padding: 7px 12px; border-radius: 999px; }
 .anim-ctl { display: flex; align-items: center; gap: 10px; margin: 0 0 16px; padding: 8px; border-radius: 999px; background: rgba(20,20,20,.88); backdrop-filter: blur(12px); }
 .anim-ctl .play, .anim-ctl .spd { flex: none; width: 40px; height: 40px; border-radius: 50%; background: var(--lime); color: #000; font-weight: 900; font-size: 13px; }
 .anim-ctl .spd { width: auto; padding: 0 12px; border-radius: 999px; background: var(--surface-2); color: #fff; }
@@ -1073,7 +1073,7 @@ function viewCatalog() {
     <button class="tile${e.db ? " tile-db" : ""}" data-ex="${e.id}">${pic(e, 500)}${store.basket.includes(e.id) ? `<span class="in-basket">✓</span>` : ""}
       <div class="cap"><span>${GROUPS[e.group].name}${e.eq.length ? "" : " · свой вес"}</span><b>${e.name}</b></div></button>`).join("") || `<div class="muted">Ничего не найдено</div>`}</div>
   ${n > shown.length ? `<div class="section"><button class="btn dark block" data-more>Показать ещё (${n - shown.length})</button></div>` : ""}
-  <div class="muted" style="font-size:12px;margin:18px 0 0;text-align:center">База упражнений: free-exercise-db (общественное достояние) · версия 3.1</div>`;
+  <div class="muted" style="font-size:12px;margin:18px 0 0;text-align:center">Версия 3.2</div>`;
 }
 function basketBar() {
   const n = store.basket.length;
@@ -1092,14 +1092,15 @@ function viewExercise(v) {
   const mus = e.db ? `<div class="section"><div class="section-head"><div class="h2">Мышцы</div></div><div class="card">
       <div class="pr"><div>Основные</div><b style="font-size:15px;text-align:right">${e.prim.map((m) => MUSCLE_RU[m]).join(", ") || "—"}</b></div>
       ${e.sec.length ? `<div class="pr"><div>Помогают</div><b style="font-size:15px;text-align:right;font-weight:500">${e.sec.map((m) => MUSCLE_RU[m]).join(", ")}</b></div>` : ""}</div></div>` : "";
-  const anim = e.photos.length > 1;
+  const demo = demoPlan(e);
   return `
-  <div class="detail-hero">${anim ? `<div class="anim playing" id="anim">${e.photos.map((u, k) => `<img class="f${k}" src="${u}" alt="${esc(e.name)}">`).join("")}</div>` : pic(e, 900)}<button class="back" data-back>‹ Назад</button></div>
+  <div class="detail-hero"><div class="anim" id="anim">${e.photos.length > 1 ? e.photos.map((u, k) => `<img class="f${k}" src="${u}" alt="${esc(e.name)}">`).join("") : pic(e, 900)}
+    <div class="demo-cap" id="demo-cap"></div><div class="demo-rep" id="demo-rep"></div></div><button class="back" data-back>‹ Назад</button></div>
 
   <div class="detail-body">
-  ${anim ? `<div class="anim-ctl"><button class="play" data-anim="toggle" aria-label="Пауза">❚❚</button>
-    <span class="lbl">Старт</span><input type="range" min="0" max="100" value="0" id="anim-r" aria-label="Фаза движения"><span class="lbl">Финиш</span>
-    <button class="spd" data-anim="speed">1×</button></div>` : ""}
+  <div class="anim-ctl"><button class="play" data-anim="toggle" aria-label="Пауза">❚❚</button>
+    <input type="range" min="0" max="${demo.dur * 10}" value="0" id="anim-r" aria-label="Демонстрация"><span class="lbl" id="demo-t">0:00 / ${fmt(demo.dur)}</span>
+    <button class="spd" data-anim="speed">1×</button></div>
     <span class="tag">${GROUPS[e.group].name}</span>${e.db ? ` <span class="tag ghost">${CAT_RU[e.cat]}</span>` : ""}
     <div class="h1" style="margin-top:12px;font-size:32px">${e.name}</div>
     ${e.en ? `<div class="muted" style="margin-top:6px;font-size:13px">${esc(e.en)}</div>` : ""}
@@ -1114,6 +1115,53 @@ function viewExercise(v) {
     <div class="section"><div class="section-head"><div class="h2">Инвентарь</div></div>
       <div class="card">${reqs.length ? reqs.join("") : `<div class="pr"><div>Без инвентаря, свой вес</div><b class="lime" style="font-size:15px">✓</b></div>`}${e.where === "outdoor" ? `<div class="pr"><div>Только на улице</div><b style="font-size:15px">🌳</b></div>` : ""}</div></div>
   </div>`;
+}
+
+// ===================== ДЕМОНСТРАЦИЯ ТЕХНИКИ =====================
+// Сцена на 15–30 с: повторы в рабочем темпе (кадры старт ↔ финиш), подсказки по шагам техники, счёт повторов.
+function demoPlan(e) {
+  const hold = e.unit === "s";
+  if (hold) return { hold, dur: e.cat === 1 ? 20 : 25, period: 0, reps: 0 };
+  const period = e.cat === 2 || e.cat === 6 || e.group === "cardio" ? 1.4 : e.compound ? 3.2 : 2.6;
+  let reps = Math.round(20 / period);
+  const dur = Math.min(30, Math.max(15, Math.round(reps * period)));
+  return { hold, period: dur / reps, reps, dur };
+}
+const ease = (x) => x * x * (3 - 2 * x);
+function phaseAt(plan, t) { // 0 — старт, 1 — финиш
+  if (plan.hold) return t < 1.5 ? ease(t / 1.5) : 1;
+  const x = (t % plan.period) / plan.period;
+  return x < 0.12 ? 0 : x < 0.45 ? ease((x - 0.12) / 0.33) : x < 0.58 ? 1 : x < 0.95 ? 1 - ease((x - 0.58) / 0.37) : 0;
+}
+let demoRaf = 0;
+function startDemo(an) {
+  cancelAnimationFrame(demoRaf);
+  const top = state.stack[state.stack.length - 1], e = exById(top.id), plan = demoPlan(e);
+  const f1 = an.querySelector(".f1"), ph = an.querySelector(".ph"), cap = document.getElementById("demo-cap"), rep = document.getElementById("demo-rep");
+  const ar = document.getElementById("anim-r"), tl = document.getElementById("demo-t"), btn = $app.querySelector("[data-anim=toggle]"), spd = $app.querySelector("[data-anim=speed]");
+  const st = { t: 0, playing: true, speed: 1, last: performance.now() };
+  const steps = e.steps;
+  const paint = () => {
+    const t = Math.min(st.t, plan.dur), p = phaseAt(plan, t);
+    if (f1) f1.style.opacity = p;
+    an.style.setProperty("--zoom", 1 + 0.04 * p);
+    if (ph) ph.style.transform = `scale(${1 + 0.25 * p})`;
+    const si = Math.min(steps.length - 1, Math.floor((t / plan.dur) * steps.length));
+    cap.textContent = steps[si];
+    rep.textContent = plan.hold ? (t < plan.dur ? `Держи · ${Math.ceil(plan.dur - t)} с` : "Готово") : `Повтор ${Math.min(plan.reps, Math.floor(t / plan.period) + 1)} / ${plan.reps}`;
+    ar.value = Math.round(t * 10); tl.textContent = `${fmt(Math.floor(t))} / ${fmt(plan.dur)}`;
+  };
+  const setPlaying = (v) => { st.playing = v; if (v && st.t >= plan.dur) st.t = 0; st.last = performance.now(); btn.textContent = v ? "❚❚" : "▶"; };
+  const loop = (now) => {
+    if (!an.isConnected) return;
+    if (st.playing) { st.t += ((now - st.last) / 1000) * st.speed; if (st.t >= plan.dur) { st.t = plan.dur; setPlaying(false); btn.textContent = "↻"; } }
+    st.last = now; paint(); demoRaf = requestAnimationFrame(loop);
+  };
+  btn.onclick = () => { haptic(); setPlaying(!st.playing); };
+  an.onclick = () => { haptic(); setPlaying(!st.playing); };
+  spd.onclick = () => { haptic(); const sp = { "1×": "0.5×", "0.5×": "2×", "2×": "1×" }[spd.textContent]; spd.textContent = sp; st.speed = parseFloat(sp); };
+  ar.oninput = () => { st.t = +ar.value / 10; setPlaying(false); paint(); };
+  paint(); demoRaf = requestAnimationFrame(loop);
 }
 
 // ===================== НАСТРОЙКИ =====================
@@ -1327,17 +1375,8 @@ function bind() {
   on("[data-more]", () => { const y = window.scrollY; state.limit += 40; render(); window.scrollTo(0, y); });
   on("[data-basket]", (el) => { const id = el.dataset.basket, b = store.basket;
     store.basket = b.includes(id) ? b.filter((x) => x !== id) : [...b, id]; save(); notify(); render(); });
-  const an = document.getElementById("anim"), ar = document.getElementById("anim-r");
-  if (an) {
-    const setPhase = (v) => { an.style.setProperty("--ph", v / 100); };
-    on("[data-anim=toggle]", (el) => { const play = !an.classList.contains("playing"); an.classList.toggle("playing", play); el.textContent = play ? "❚❚" : "▶"; if (!play) setPhase(+ar.value); });
-    on("[data-anim=speed]", (el) => { const sp = { "1×": "0.5×", "0.5×": "2×", "2×": "1×" }[el.textContent]; el.textContent = sp; an.style.setProperty("--dur", (2.4 / parseFloat(sp)) + "s"); });
-    ar.oninput = () => { an.classList.remove("playing"); $app.querySelector("[data-anim=toggle]").textContent = "▶"; setPhase(+ar.value); };
-    const f1 = an.querySelector(".f1");
-    const sync = () => { if (!an.isConnected) return; if (an.classList.contains("playing")) ar.value = Math.round(+getComputedStyle(f1).opacity * 100); requestAnimationFrame(sync); };
-    requestAnimationFrame(sync);
-    an.onclick = () => { const play = !an.classList.contains("playing"); an.classList.toggle("playing", play); $app.querySelector("[data-anim=toggle]").textContent = play ? "❚❚" : "▶"; if (!play) { ar.value = +getComputedStyle(an.querySelector(".f1")).opacity > 0.5 ? 100 : 0; setPhase(+ar.value); } };
-  }
+  const an = document.getElementById("anim");
+  if (an) startDemo(an);
   on("[data-unbasket]", (el) => { const v = state.stack[state.stack.length - 1], it = v.w.items.splice(+el.dataset.unbasket, 1)[0];
     store.basket = store.basket.filter((x) => x !== it.id); save(); render(); });
   on("[data-basket-go]", () => push({ type: "preview", w: basketWorkout(), basket: true }));

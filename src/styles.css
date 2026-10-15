@@ -258,11 +258,11 @@ img { display: block; }
 .basket-bar .x { width: 52px; height: 52px; border-radius: 50%; background: var(--surface-2); color: #fff; font-size: 16px; box-shadow: 0 8px 30px rgba(0,0,0,.6); }
 .ph { position: absolute; inset: 0; display: grid; place-items: center; font-size: 64px; background: radial-gradient(circle at 50% 40%, #3a4a00, #0d0d0d 70%); }
 .thumb .ph { font-size: 28px; }
-.anim { position: absolute; inset: 0; --ph: 0; --dur: 2.4s; cursor: pointer; }
-.anim img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
-.anim .f1 { opacity: var(--ph); }
-.anim.playing .f1 { animation: phase var(--dur) ease-in-out infinite; }
-@keyframes phase { 0%, 15% { opacity: 0; } 45%, 65% { opacity: 1; } 95%, 100% { opacity: 0; } }
+.anim { position: absolute; inset: 0; cursor: pointer; overflow: hidden; --zoom: 1; }
+.anim img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; transform: scale(var(--zoom)); }
+.anim .f1 { opacity: 0; }
+.demo-cap { position: absolute; left: 16px; right: 16px; bottom: 76px; z-index: 2; font-weight: 600; font-size: 15px; line-height: 1.3; text-shadow: 0 1px 8px #000; }
+.demo-rep { position: absolute; top: 18px; right: 16px; z-index: 2; background: var(--lime); color: #000; font-weight: 800; font-size: 13px; padding: 7px 12px; border-radius: 999px; }
 .anim-ctl { display: flex; align-items: center; gap: 10px; margin: 0 0 16px; padding: 8px; border-radius: 999px; background: rgba(20,20,20,.88); backdrop-filter: blur(12px); }
 .anim-ctl .play, .anim-ctl .spd { flex: none; width: 40px; height: 40px; border-radius: 50%; background: var(--lime); color: #000; font-weight: 900; font-size: 13px; }
 .anim-ctl .spd { width: auto; padding: 0 12px; border-radius: 999px; background: var(--surface-2); color: #fff; }
