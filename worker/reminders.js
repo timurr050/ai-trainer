@@ -573,7 +573,7 @@ async function chatApi(env, user, body) {
 // Служебные адреса для GitHub Actions после деплоя: защищены тем же секретом, что и вебхук
 async function service(req, env, url) {
   if (req.headers.get("X-Service-Key") !== (await webhookSecret(env))) return new Response("forbidden", { status: 403 });
-  if (url.pathname === "/setup") { const r = await setWebhook(env, url.origin); return json({ ok: r.status === 200, tg: r.j }); }
+  if (url.pathname === "/setup") { const r = await setWebhook(env, url.origin); const info = await tgApi(env, "getWebhookInfo", {}); return json({ ok: r.status === 200, tg: r.j, allowed: info.j && info.j.result && info.j.result.allowed_updates }); }
   const q = url.searchParams.get("q") || "Составь план питания на 1800 ккал на день для мужчины 30 лет";
   const t0 = Date.now();
   const r = await ask(env, { id: 0, first_name: "Тест" }, q, {}, true);

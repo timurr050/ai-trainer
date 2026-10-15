@@ -33,6 +33,6 @@ jobs:
           KEY=$(printf 'wh%s' "$BOT_TOKEN" | sha256sum | cut -c1-32)
           URL=https://ai-trainer.tim9728.workers.dev
           sleep 5
-          curl -sS -H "X-Service-Key: $KEY" "$URL/setup" | head -c 300; echo
+          curl -sS -H "X-Service-Key: $KEY" "$URL/setup" | head -c 400; echo
           curl -sS --max-time 120 -H "X-Service-Key: $KEY" "$URL/aitest" > aitest.json || true
           node -e 'const j=JSON.parse(require("fs").readFileSync("aitest.json","utf8"));console.log("ok:",j.ok,"ms:",j.ms,"pdf bytes:",j.pdfBytes,j.pdfErr||"");console.log(j.text)'
