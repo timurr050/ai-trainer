@@ -221,7 +221,7 @@ function viewRun() {
     <div class="stat"><div class="big-num">${best ? paceStr(best) : "—"}</div><div class="eyebrow">лучший темп</div></div>
   </div>
   <div class="card section" style="margin-top:12px">
-    <div class="pr"><div>Вес для расчёта калорий</div><div class="stepper"><button data-wt="-1">−</button><b>${runWeight()} кг</b><button data-wt="1">+</button></div></div>
+    <div class="pr"><div>Вес для расчёта калорий</div><div class="wt-stepper"><button data-wt="-1">−</button><b>${runWeight()} кг</b><button data-wt="1">+</button></div></div>
     <div class="pr"><div>Голосовые подсказки каждый км</div><button class="toggle ${p.voice === false ? "" : "on"}" data-voice aria-label="Голос"><i></i></button></div>
   </div>
   ${R.length ? `<div class="section"><div class="section-head"><div class="h2">Пробежки</div></div><div class="list">${R.slice(0, 5).map(runRow).join("")}</div></div>` : ""}`;

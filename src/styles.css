@@ -293,8 +293,8 @@ img { display: block; }
 .run-hero > div { background: var(--lime); color: #000; border-radius: 20px; padding: 14px 16px; }
 .run-hero b { display: block; font-family: var(--display); font-weight: 900; font-size: 34px; line-height: 1; }
 .run-hero span { font-weight: 700; font-size: 12px; text-transform: uppercase; letter-spacing: .08em; }
-.stepper { display: flex; align-items: center; gap: 10px; }
-.stepper button { width: 34px; height: 34px; border-radius: 50%; background: var(--surface-2); color: #fff; font-size: 18px; font-weight: 700; }
+.wt-stepper { display: flex; align-items: center; gap: 10px; }
+.wt-stepper button { width: 34px; height: 34px; border-radius: 50%; background: var(--surface-2); color: #fff; font-size: 18px; font-weight: 700; }
 .toggle { width: 52px; height: 30px; border-radius: 999px; background: var(--surface-2); position: relative; flex: none; }
 .toggle i { position: absolute; top: 3px; left: 3px; width: 24px; height: 24px; border-radius: 50%; background: #666; transition: .2s; }
 .toggle.on { background: var(--lime); } .toggle.on i { left: 25px; background: #000; }

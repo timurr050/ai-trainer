@@ -522,6 +522,7 @@ function pop() { state.stack.pop(); render(); window.scrollTo(0, 0); }
 $tabbar.addEventListener("click", (e) => { const b = e.target.closest("button"); if (!b) return; haptic(); go(b.dataset.tab); });
 if (tg) tg.BackButton.onClick(() => { haptic(); if (state.ob && state.obStep > 0) { state.obStep--; render(); } else if (state.ob && state.obReturn) { state.ob = null; render(); } else pop(); });
 
+const APP_VERSION = "3.7.1";
 let sessionClock = null;
 function render() {
   if (state.tab !== "timer") stopTicker();
@@ -535,7 +536,8 @@ function render() {
   else html = { coach: viewCoach, catalog: viewCatalog, run: viewRun, timer: viewTimer, history: viewHistory, progress: viewProgress }[state.tab]();
   killMap();
   const bar = !onboarding && (!top ? state.tab === "catalog" : top.type === "exercise") ? basketBar() : "";
-  $app.innerHTML = `<div class="screen">${html}</div>${bar}`;
+  const ver = adm.flag.banned ? "" : `<div class="muted" style="font-size:12px;margin:18px 0 0;text-align:center">Версия ${APP_VERSION}</div>`;
+  $app.innerHTML = `<div class="screen">${html}${ver}</div>${bar}`;
   const hideTabs = adm.flag.banned || onboarding || (top && top.type === "session");
   $tabbar.classList.toggle("hidden", !!hideTabs);
   $tabbar.querySelectorAll("button").forEach((b) => b.classList.toggle("active", b.dataset.tab === state.tab));
@@ -764,8 +766,7 @@ function viewCatalog() {
   <div class="grid section" style="margin-top:16px">${shown.map((e) => `
     <button class="tile${e.db ? " tile-db" : ""}" data-ex="${e.id}">${pic(e, 500)}${store.basket.includes(e.id) ? `<span class="in-basket">✓</span>` : ""}
       <div class="cap"><span>${GROUPS[e.group].name}${e.eq.length ? "" : " · свой вес"}</span><b>${e.name}</b></div></button>`).join("") || `<div class="muted">Ничего не найдено</div>`}</div>
-  ${n > shown.length ? `<div class="section"><button class="btn dark block" data-more>Показать ещё (${n - shown.length})</button></div>` : ""}
-  <div class="muted" style="font-size:12px;margin:18px 0 0;text-align:center">Версия 3.7</div>`;
+  ${n > shown.length ? `<div class="section"><button class="btn dark block" data-more>Показать ещё (${n - shown.length})</button></div>` : ""}`;
 }
 function basketBar() {
   const n = store.basket.length;
@@ -1738,7 +1739,7 @@ function viewRun() {
     <div class="stat"><div class="big-num">${best ? paceStr(best) : "—"}</div><div class="eyebrow">лучший темп</div></div>
   </div>
   <div class="card section" style="margin-top:12px">
-    <div class="pr"><div>Вес для расчёта калорий</div><div class="stepper"><button data-wt="-1">−</button><b>${runWeight()} кг</b><button data-wt="1">+</button></div></div>
+    <div class="pr"><div>Вес для расчёта калорий</div><div class="wt-stepper"><button data-wt="-1">−</button><b>${runWeight()} кг</b><button data-wt="1">+</button></div></div>
     <div class="pr"><div>Голосовые подсказки каждый км</div><button class="toggle ${p.voice === false ? "" : "on"}" data-voice aria-label="Голос"><i></i></button></div>
   </div>
   ${R.length ? `<div class="section"><div class="section-head"><div class="h2">Пробежки</div></div><div class="list">${R.slice(0, 5).map(runRow).join("")}</div></div>` : ""}`;
