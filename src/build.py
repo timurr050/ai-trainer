@@ -28,7 +28,8 @@ jam = root / "music" / "jamendo.json"
 if jam.exists():
     jl = _json.loads(jam.read_text() or "[]")
     if jl:
-        tracks = [{"u": t["u"], "t": t["t"], "a": t["a"], "d": t["d"], "s": t.get("s", ""), "l": t.get("l", "")} for t in jl]
+        import html as _html
+        tracks = [{"u": t["u"], "t": _html.unescape(t["t"]), "a": _html.unescape(t["a"]), "d": t["d"], "s": t.get("s", ""), "l": t.get("l", "")} for t in jl]
 app = app.replace("// @@MUSIC@@", "const TRACKS = " + _json.dumps(tracks, ensure_ascii=False) + ";\n" + (src / "music.js").read_text())
 assert app.count("// @@CHAT@@") == 1
 app = app.replace("// @@CHAT@@", (src / "chat.js").read_text())

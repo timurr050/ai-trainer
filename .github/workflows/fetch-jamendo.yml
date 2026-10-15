@@ -18,6 +18,9 @@ jobs:
       - run: node tools/fetch_jamendo.mjs
         env:
           JAMENDO_CLIENT_ID: ${{ secrets.JAMENDO_CLIENT_ID || vars.JAMENDO_CLIENT_ID }}
+      - name: Check that streams play
+        run: |
+          node -e 'const l=require("./music/jamendo.json");for(const t of [l[0],l[100],l[399]])if(t)console.log(t.u)' | while read -r u; do curl -s -o /dev/null -r 0-1000 -w "%{http_code} %{content_type} %{size_download}\n" -L "$u"; done
       - uses: actions/setup-python@v5
         with: { python-version: "3.12" }
       - name: Rebuild app and commit
