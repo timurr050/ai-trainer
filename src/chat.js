@@ -96,7 +96,7 @@ function viewChat() {
   const left = chat.left != null && chat.left <= 5 ? `<div class="muted chat-left">${chat.left ? `Осталось вопросов на сегодня: ${chat.left}` : "Вопросы на сегодня закончились, лимит обновится в 03:00 по Москве"}</div>` : "";
   return `
   <div class="top"><div><div class="eyebrow">Чат</div><div class="h1" style="margin-top:8px">AI-<span class="lime">тренер</span></div></div>
-    ${chat.h.length ? `<button class="icon-btn" data-chat-reset aria-label="Начать заново" title="Начать заново">🗑</button>` : ""}</div>
+    ${chat.h.length ? `<button class="icon-btn ico-btn" data-chat-reset aria-label="Начать заново" title="Начать заново">${ICO.trash}</button>` : ""}</div>
   ${chat.loading && !chat.h.length ? `<div class="muted" style="text-align:center;padding:30px 0">Загружаю…</div>` : ""}
   ${chat.err ? `<div class="muted" style="text-align:center;padding:12px 0">${esc(chat.err)}</div>` : ""}
   ${empty}<div class="chat">${msgs}${typing}</div>${left}

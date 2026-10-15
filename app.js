@@ -575,7 +575,7 @@ function pop() { state.stack.pop(); navAnim = "back"; render(); const y = scroll
 $tabbar.addEventListener("click", (e) => { const b = e.target.closest("button"); if (!b) return; haptic(); go(b.dataset.tab); });
 if (tg) tg.BackButton.onClick(() => { haptic(); if (state.ob && state.obStep > 0) { state.obStep--; render(); } else if (state.ob && state.obReturn) { state.ob = null; render(); } else pop(); });
 
-const APP_VERSION = "3.11.2";
+const APP_VERSION = "3.11.3";
 let sessionClock = null;
 function render() {
   if (state.tab !== "timer") stopTicker();
@@ -717,7 +717,7 @@ function viewCoach() {
   return `
   <div class="top">
     <div><div class="eyebrow">Привет, ${userName}</div><div class="h1" style="margin-top:8px">Время<br><span class="lime">качаться</span></div></div>
-    <div style="display:flex;gap:8px"><button class="icon-btn" data-music aria-label="Музыка">🎵</button><button class="icon-btn" data-settings aria-label="Настройки">⚙️</button></div>
+    <div style="display:flex;gap:8px"><button class="icon-btn ico-btn" data-music aria-label="Музыка">${ICO.note}</button><button class="icon-btn ico-btn" data-settings aria-label="Настройки">${ICO.gear}</button></div>
   </div>
   ${session}${!p.age ? `<div class="card age-card"><div class="title">Сколько тебе лет?</div><div class="sub">Подстрою нагрузку и советы тренера под возраст</div>${ageButtons(0)}</div>` : ""}${hero}
   ${p.goal === "gto" ? `<button class="row ask-coach" data-gto-norms><div class="thumb">🏅</div><div class="grow"><div class="title">Мои нормативы ГТО</div><div class="sub">Спроси тренера, что сдавать в твоём возрасте</div></div><span class="chev">›</span></button>` : ""}
@@ -804,7 +804,7 @@ function viewSession() {
   const total = s.items.reduce((a, it) => a + it.sets, 0), done = s.items.reduce((a, it) => a + it.done.filter(Boolean).length, 0);
   return `
   <div class="top"><div><div class="eyebrow">${esc(s.title)}</div><div class="h1" style="margin-top:8px;font-variant-numeric:tabular-nums" id="s-clock">${fmt(Math.floor((Date.now() - s.startedAt) / 1000))}</div></div>
-    <div style="display:flex;gap:8px"><button class="icon-btn" data-music aria-label="Музыка">🎵</button><button class="icon-btn" data-back aria-label="Свернуть">✕</button></div></div>
+    <div style="display:flex;gap:8px"><button class="icon-btn ico-btn" data-music aria-label="Музыка">${ICO.note}</button><button class="icon-btn ico-btn" data-back aria-label="Свернуть">${ICO.close}</button></div></div>
   <div class="card" style="padding:14px 18px"><div class="section-head" style="margin:0"><span class="eyebrow">Подходы</span><b>${done} / ${total}</b></div>
     <div class="tr" style="height:8px;border-radius:6px;background:var(--surface-2);margin-top:10px;overflow:hidden"><i style="display:block;height:100%;width:${(done / total) * 100}%;background:var(--lime)"></i></div></div>
   <div class="list section" style="margin-top:12px">${s.items.map((it, i) => { const e = exById(it.id); const all = it.done.every(Boolean); return `
@@ -1423,7 +1423,7 @@ function viewChat() {
   const left = chat.left != null && chat.left <= 5 ? `<div class="muted chat-left">${chat.left ? `Осталось вопросов на сегодня: ${chat.left}` : "Вопросы на сегодня закончились, лимит обновится в 03:00 по Москве"}</div>` : "";
   return `
   <div class="top"><div><div class="eyebrow">Чат</div><div class="h1" style="margin-top:8px">AI-<span class="lime">тренер</span></div></div>
-    ${chat.h.length ? `<button class="icon-btn" data-chat-reset aria-label="Начать заново" title="Начать заново">🗑</button>` : ""}</div>
+    ${chat.h.length ? `<button class="icon-btn ico-btn" data-chat-reset aria-label="Начать заново" title="Начать заново">${ICO.trash}</button>` : ""}</div>
   ${chat.loading && !chat.h.length ? `<div class="muted" style="text-align:center;padding:30px 0">Загружаю…</div>` : ""}
   ${chat.err ? `<div class="muted" style="text-align:center;padding:12px 0">${esc(chat.err)}</div>` : ""}
   ${empty}<div class="chat">${msgs}${typing}</div>${left}
@@ -1510,10 +1510,22 @@ function renderMusicBar() {
     };
   }
   const t = TRACKS[music.i] || { t: "" };
-  el.innerHTML = `<span class="eq ${music.playing ? "on" : ""}"><i></i><i></i><i></i></span><b>${esc(t.t)}</b>
-    <button data-m="toggle" aria-label="Пауза">${music.playing ? "❚❚" : "▶"}</button><button data-m="next" aria-label="Следующий">⏭</button><button data-m="close" aria-label="Выключить">✕</button>`;
+  el.innerHTML = `<span class="mq ${music.playing ? "on" : ""}"><i></i><i></i><i></i></span><b>${esc(t.t)}</b>
+    <button data-m="toggle" aria-label="Пауза">${music.playing ? ICO.pause : ICO.play}</button><button data-m="next" aria-label="Следующий">${ICO.next}</button><button data-m="close" aria-label="Выключить">${ICO.close}</button>`;
 }
 
+// ровные SVG-иконки вместо эмодзи (эмодзи на iPhone рисуются цветными квадратами)
+const ICO = {
+  play: '<svg viewBox="0 0 24 24"><path d="M8 5.5v13a1 1 0 0 0 1.5.86l10.5-6.5a1 1 0 0 0 0-1.72L9.5 4.64A1 1 0 0 0 8 5.5z"/></svg>',
+  pause: '<svg viewBox="0 0 24 24"><rect x="6" y="5" width="4" height="14" rx="1.2"/><rect x="14" y="5" width="4" height="14" rx="1.2"/></svg>',
+  next: '<svg viewBox="0 0 24 24"><path d="M5 6.2v11.6a.8.8 0 0 0 1.23.67L15 12.67a.8.8 0 0 0 0-1.34L6.23 5.53A.8.8 0 0 0 5 6.2z"/><rect x="16.5" y="5.5" width="2.6" height="13" rx="1"/></svg>',
+  prev: '<svg viewBox="0 0 24 24"><path d="M19 6.2v11.6a.8.8 0 0 1-1.23.67L9 12.67a.8.8 0 0 1 0-1.34l8.77-5.8A.8.8 0 0 1 19 6.2z"/><rect x="4.9" y="5.5" width="2.6" height="13" rx="1"/></svg>',
+  close: '<svg viewBox="0 0 24 24" class="st"><path d="M7 7l10 10M17 7L7 17"/></svg>',
+  shuffle: '<svg viewBox="0 0 24 24" class="st"><path d="M3 7h3.5c2 0 3.2 1 4.2 2.6l2.6 4.8c1 1.6 2.2 2.6 4.2 2.6H21M17.5 13.5 21 17l-3.5 3.5M3 17h3.5c1.4 0 2.4-.5 3.2-1.3M13.3 8.3c.8-.8 1.8-1.3 3.2-1.3H21M17.5 3.5 21 7l-3.5 3.5"/></svg>',
+  gear: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1.03 1.56V21a2 2 0 1 1-4 0v-.09A1.7 1.7 0 0 0 8.9 19.4a1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.56-1.03H3a2 2 0 1 1 0-4h.09A1.7 1.7 0 0 0 4.6 8.9a1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.7 1.7 0 0 0 8.9 4.6 1.7 1.7 0 0 0 9.93 3.04V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1.03 1.56 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87V9c.26.6.86 1 1.51 1H21a2 2 0 1 1 0 4h-.09c-.65 0-1.25.4-1.51 1z"/></svg>',
+  trash: '<svg viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M5.5 7l1 12a2 2 0 0 0 2 1.8h7a2 2 0 0 0 2-1.8l1-12M9 7V4.8A.8.8 0 0 1 9.8 4h4.4a.8.8 0 0 1 .8.8V7"/></svg>',
+  note: '<svg viewBox="0 0 24 24"><path d="M9 17.5V6.3a1 1 0 0 1 .76-.97l9-2.25A1 1 0 0 1 20 4.05V15.5"/><circle cx="6.5" cy="17.5" r="2.5"/><circle cx="17.5" cy="15.5" r="2.5"/></svg>',
+};
 const mmss = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
 function viewMusic() {
   const cur = TRACKS[music.i];
@@ -1523,12 +1535,12 @@ function viewMusic() {
   <div class="card music-now">
     <div class="eyebrow">${music.playing ? "Сейчас играет" : "Пауза"}</div>
     <div class="title">${esc(cur ? cur.t : "")}</div><div class="sub">Kevin MacLeod</div>
-    <div class="music-ctl"><button data-mc="prev" aria-label="Назад">⏮</button><button data-mc="toggle" class="big" aria-label="Играть">${music.playing ? "❚❚" : "▶"}</button><button data-mc="next" aria-label="Дальше">⏭</button></div>
-    <button class="chip ${music.shuffle ? "active" : ""}" data-mc="shuffle" style="margin-top:14px">🔀 Вперемешку</button>
+    <div class="music-ctl"><button data-mc="prev" aria-label="Назад">${ICO.prev}</button><button data-mc="toggle" class="big" aria-label="Играть">${music.playing ? ICO.pause : ICO.play}</button><button data-mc="next" aria-label="Дальше">${ICO.next}</button></div>
+    <button class="chip ${music.shuffle ? "active" : ""}" data-mc="shuffle" style="margin-top:16px"><span class="ico">${ICO.shuffle}</span>Вперемешку</button>
   </div>
-  <div class="list section">${TRACKS.map((t, i) => `<button class="row track ${i === music.i && music.on ? "cur" : ""}" data-track="${i}"><div class="grow"><div class="title">${esc(t.t)}</div><div class="sub">Kevin MacLeod · ${mmss(t.d)}</div></div><span class="chev">${i === music.i && music.playing ? "🔊" : "▶"}</span></button>`).join("")}</div>
+  <div class="list section">${TRACKS.map((t, i) => `<button class="row track ${i === music.i && music.on ? "cur" : ""}" data-track="${i}"><div class="grow"><div class="title">${esc(t.t)}</div><div class="sub">Kevin MacLeod · ${mmss(t.d)}</div></div><span class="trk-ico ${i === music.i && music.playing ? "on" : ""}">${i === music.i && music.playing ? '<span class="mq on"><i></i><i></i><i></i></span>' : ICO.play}</span></button>`).join("")}</div>
   <div class="muted" style="font-size:12px;margin-top:16px;line-height:1.5">Музыка: Kevin MacLeod (incompetech.com), лицензия Creative Commons Attribution 4.0. Играет, пока открыто приложение.</div>`
-  : `<div class="empty"><div class="big">🎵</div><b>Музыка скоро появится</b></div>`}`;
+  : `<div class="empty"><div class="big">🎧</div><b>Музыка скоро появится</b></div>`}`;
 }
 function bindMusic(on) {
   on("[data-music]", () => { if (!music.on) musicPlay(); push({ type: "music" }); });

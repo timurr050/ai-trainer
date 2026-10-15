@@ -349,7 +349,7 @@ function pop() { state.stack.pop(); navAnim = "back"; render(); const y = scroll
 $tabbar.addEventListener("click", (e) => { const b = e.target.closest("button"); if (!b) return; haptic(); go(b.dataset.tab); });
 if (tg) tg.BackButton.onClick(() => { haptic(); if (state.ob && state.obStep > 0) { state.obStep--; render(); } else if (state.ob && state.obReturn) { state.ob = null; render(); } else pop(); });
 
-const APP_VERSION = "3.11.2";
+const APP_VERSION = "3.11.3";
 let sessionClock = null;
 function render() {
   if (state.tab !== "timer") stopTicker();
@@ -491,7 +491,7 @@ function viewCoach() {
   return `
   <div class="top">
     <div><div class="eyebrow">Привет, ${userName}</div><div class="h1" style="margin-top:8px">Время<br><span class="lime">качаться</span></div></div>
-    <div style="display:flex;gap:8px"><button class="icon-btn" data-music aria-label="Музыка">🎵</button><button class="icon-btn" data-settings aria-label="Настройки">⚙️</button></div>
+    <div style="display:flex;gap:8px"><button class="icon-btn ico-btn" data-music aria-label="Музыка">${ICO.note}</button><button class="icon-btn ico-btn" data-settings aria-label="Настройки">${ICO.gear}</button></div>
   </div>
   ${session}${!p.age ? `<div class="card age-card"><div class="title">Сколько тебе лет?</div><div class="sub">Подстрою нагрузку и советы тренера под возраст</div>${ageButtons(0)}</div>` : ""}${hero}
   ${p.goal === "gto" ? `<button class="row ask-coach" data-gto-norms><div class="thumb">🏅</div><div class="grow"><div class="title">Мои нормативы ГТО</div><div class="sub">Спроси тренера, что сдавать в твоём возрасте</div></div><span class="chev">›</span></button>` : ""}
@@ -578,7 +578,7 @@ function viewSession() {
   const total = s.items.reduce((a, it) => a + it.sets, 0), done = s.items.reduce((a, it) => a + it.done.filter(Boolean).length, 0);
   return `
   <div class="top"><div><div class="eyebrow">${esc(s.title)}</div><div class="h1" style="margin-top:8px;font-variant-numeric:tabular-nums" id="s-clock">${fmt(Math.floor((Date.now() - s.startedAt) / 1000))}</div></div>
-    <div style="display:flex;gap:8px"><button class="icon-btn" data-music aria-label="Музыка">🎵</button><button class="icon-btn" data-back aria-label="Свернуть">✕</button></div></div>
+    <div style="display:flex;gap:8px"><button class="icon-btn ico-btn" data-music aria-label="Музыка">${ICO.note}</button><button class="icon-btn ico-btn" data-back aria-label="Свернуть">${ICO.close}</button></div></div>
   <div class="card" style="padding:14px 18px"><div class="section-head" style="margin:0"><span class="eyebrow">Подходы</span><b>${done} / ${total}</b></div>
     <div class="tr" style="height:8px;border-radius:6px;background:var(--surface-2);margin-top:10px;overflow:hidden"><i style="display:block;height:100%;width:${(done / total) * 100}%;background:var(--lime)"></i></div></div>
   <div class="list section" style="margin-top:12px">${s.items.map((it, i) => { const e = exById(it.id); const all = it.done.every(Boolean); return `
