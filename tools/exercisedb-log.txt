@@ -61,3 +61,9 @@ base https://oss.exercisedb.dev/api/v1, total 1500
 200 https://oss.exercisedb.dev/api/v1/exercises?limit=100&after=yz9nUhF {"success":true,"meta":{"total":1500,"hasNextPage":true,"hasPreviousPage":true,"nextCursor":"ZIViNh1","previousCursor":"Yza7XrQ"},"data":[{"exerciseId":"Yza7XrQ","name":"barbell alternate biceps curl"
 200 https://oss.exercisedb.dev/api/v1/exercises?limit=100&after=ZIViNh1 {"success":true,"meta":{"total":1500,"hasNextPage":false,"hasPreviousPage":true,"previousCursor":"zK8Fu1W"},"data":[{"exerciseId":"zK8Fu1W","name":"smith reverse-grip press","gifUrl":"https://static.e
 got 1500
+gif 200 ref=null 67084B image/gif acao=null cache=max-age=14400
+gif 200 ref=https://timurr050.github.io/ 67084B image/gif acao=null cache=max-age=14400
+gif 200 ref=null 109751B image/gif acao=null cache=max-age=14400
+gif 200 ref=https://timurr050.github.io/ 109751B image/gif acao=null cache=max-age=14400
+gif 200 ref=null 76244B image/gif acao=null cache=max-age=14400
+gif 200 ref=https://timurr050.github.io/ 76244B image/gif acao=null cache=max-age=14400
