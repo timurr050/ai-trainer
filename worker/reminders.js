@@ -56,6 +56,7 @@ async function send(env, chatId, text) {
 
 async function tick(env) {
   const now = new Date();
+  const budget = { left: 45 }; // бесплатный воркер: до 50 внешних запросов за запуск
   let cursor;
   do {
     const page = await env.REMINDERS.list({ prefix: "u", cursor });
@@ -67,10 +68,12 @@ async function tick(env) {
       const tomorrow = (L.dow + 1) % 7;
       let changed = false;
       if (u.before && u.days[tomorrow] && due(u.beforeAt || "20:00") && u.sentBefore !== L.ymd) {
+        budget.left--;
         const st = await send(env, u.id, `Завтра тренировка: <b>${u.days[tomorrow]}</b>, около ${u.minutes || 45} мин 💪\nВыспись и подготовь форму, я соберу упражнения под твой инвентарь.`);
         u.sentBefore = L.ymd; changed = true; if (st === 403) u.on = false;
       }
       if (u.dayOf && u.days[L.dow] && due(u.dayOfAt || "09:00") && u.sentDay !== L.ymd) {
+        budget.left--;
         const st = await send(env, u.id, `Сегодня тренировка: <b>${u.days[L.dow]}</b> 🔥\nПлан на ${DAY[L.dow]} уже готов, жми кнопку и начинай.`);
         u.sentDay = L.ymd; changed = true; if (st === 403) u.on = false;
       }
@@ -78,6 +81,8 @@ async function tick(env) {
     }
     cursor = page.list_complete ? null : page.cursor;
   } while (cursor);
+  await runScheduled(env, budget);
+  await nudges(env, budget);
 }
 
 export default {
@@ -106,31 +111,87 @@ export default {
 };
 
 // ===================== ПОЛЬЗОВАТЕЛИ =====================
+// p<id>: metadata — короткая карточка (читается списком), value — анкета и последние тренировки.
+// Поля metadata: f/l/n имя, фамилия, ник; s первый вход; a последняя активность в приложении; h дни активности (base36, до 30);
+// w/r тренировок/пробежек; e топ упражнений; g/lv/pl цель, уровень, место; src источник; tz часовой пояс;
+// st нажал /start; b заблокировал бота; x бан; nd дата последнего «возвращайся»; ms последний поздравленный рубеж.
 const today = () => new Date().toISOString().slice(0, 10);
-// Обновляет карточку пользователя. Пишем в KV не чаще раза в день на человека (лимит бесплатного KV — 1000 записей в сутки).
-async function touch(env, user, stats = {}, src = "app") {
-  const key = "p" + user.id;
-  const old = await env.REMINDERS.getWithMetadata(key);
-  const m = old.metadata || {};
+const dayN = () => Math.floor(Date.now() / 86400000);
+const ago = (n) => new Date(Date.now() - n * 86400000).toISOString().slice(0, 10);
+const MILESTONES = [10, 25, 50, 100, 200, 300, 500];
+const LABELS = {
+  g: { lose: "Похудеть", mass: "Набрать массу", strength: "Стать сильнее", endurance: "Выносливость", fit: "Быть в форме" },
+  lv: { 1: "Новичок", 2: "Средний", 3: "Продвинутый" },
+  pl: { home: "Дома", street: "На улице", gym: "В зале" },
+};
+
+async function getUser(env, id) {
+  const r = await env.REMINDERS.getWithMetadata("p" + id, "json");
+  return { meta: r.metadata || null, val: r.value || {} };
+}
+const putUser = (env, id, meta, val) => env.REMINDERS.put("p" + id, JSON.stringify(val || {}), { metadata: meta });
+async function patchMeta(env, id, patch) {
+  const { meta, val } = await getUser(env, id);
+  if (!meta) return;
+  await putUser(env, id, { ...meta, ...patch }, val);
+}
+
+async function getCfg(env) {
+  return { nudge: false, nudgeDays: 5, nudgeText: "Привет! Ты не тренировался уже {days} дн. Давай вернёмся: план на сегодня готов 💪", milestones: true,
+    ...((await env.REMINDERS.get("cfg", "json")) || {}) };
+}
+
+async function touch(env, user, body = {}, src = "app") {
+  const { meta: m0, val: v0 } = await getUser(env, user.id);
+  const m = m0 || {};
+  const st = body.stats || {};
+  const pr = body.profile || null;
+  const isApp = src === "app";
+  let h = String(m.h || "").split(".").filter(Boolean);
+  if (isApp) { const d = dayN().toString(36); if (!h.includes(d)) h.push(d); h = h.slice(-30); }
   const n = {
     f: String(user.first_name || "").slice(0, 40), l: String(user.last_name || "").slice(0, 40), n: String(user.username || "").slice(0, 32),
-    s: m.s || today(), a: src === "app" ? today() : m.a || "",
-    w: stats.w != null ? +stats.w || 0 : m.w || 0, r: stats.r != null ? +stats.r || 0 : m.r || 0,
-    st: src === "start" ? 1 : m.st || 0, b: 0,
+    s: m.s || today(), a: isApp ? today() : m.a || "", h: h.join("."),
+    w: st.w != null ? +st.w || 0 : m.w || 0, r: st.r != null ? +st.r || 0 : m.r || 0,
+    e: Array.isArray(body.ex) ? body.ex.slice(0, 3).map((x) => String(x).slice(0, 30)).join(",") : m.e || "",
+    g: pr ? String(pr.goal || "").slice(0, 12) : m.g || "", lv: pr ? +pr.level || 0 : m.lv || 0, pl: pr ? String(pr.place || "").slice(0, 10) : m.pl || "",
+    src: m.src || (body.src ? String(body.src).replace(/[^\w-]/g, "").slice(0, 32) : ""),
+    tz: body.tz ? String(body.tz).slice(0, 40) : m.tz || "",
+    st: src === "start" ? 1 : m.st || 0, b: 0, x: m.x || 0, nd: m.nd || "", ms: m.ms || 0,
   };
-  const same = old.value && Object.keys(n).every((k) => m[k] === n[k]);
-  if (!same) await env.REMINDERS.put(key, "1", { metadata: n });
+  const val = { ...v0 };
+  if (pr) val.pr = { goal: pr.goal, level: pr.level, place: pr.place, eq: (pr.eq || []).slice(0, 20), days: pr.days, minutes: pr.minutes };
+  if (Array.isArray(body.wk)) val.wk = body.wk.slice(0, 15);
+  if (Array.isArray(body.rn)) val.rn = body.rn.slice(0, 10);
+  const same = m0 && Object.keys(n).every((k) => m[k] === n[k]) && !body.wk;
+  // поздравление с рубежом
+  if (isApp && !n.x) {
+    const cfg = await getCfg(env);
+    const hit = MILESTONES.filter((x) => n.w >= x && x > (m.ms || 0)).pop();
+    if (hit) {
+      n.ms = hit;
+      if (cfg.milestones && m0) await tgApi(env, "sendMessage", { chat_id: user.id, text: `🏆 ${hit}-я тренировка! ${user.first_name || "Атлет"}, это серьёзно. Так держать, продолжаем 💪`, reply_markup: appBtn(env) });
+    }
+  }
+  if (!same || n.ms !== m.ms) await putUser(env, user.id, n, val);
   return n;
 }
+const appBtn = (env, text = "Открыть AI-Тренер") => ({ inline_keyboard: [[{ text, web_app: { url: env.APP_URL } }]] });
 
 async function isAdmin(env, id) {
   const ids = String(env.ADMIN_IDS || "").split(",").map((x) => x.trim()).filter(Boolean);
   if (ids.includes(String(id))) return true;
   return (await env.REMINDERS.get("admin")) === String(id);
 }
+async function adminIds(env) {
+  const ids = String(env.ADMIN_IDS || "").split(",").map((x) => x.trim()).filter(Boolean);
+  const a = await env.REMINDERS.get("admin"); if (a) ids.push(a);
+  return [...new Set(ids)];
+}
 
 async function hello(env, user, body) {
-  await touch(env, user, body.stats || {}, "app");
+  const n = await touch(env, user, body, "app");
+  if (n.x) return json({ ok: true, banned: true });
   const adm = await isAdmin(env, user.id);
   const free = !adm && !String(env.ADMIN_IDS || "").trim() && !(await env.REMINDERS.get("admin"));
   return json({ ok: true, admin: adm, claimable: free });
@@ -145,15 +206,67 @@ async function listAll(env, prefix) {
   } while (cursor);
   return out;
 }
-
 async function users(env) {
-  return (await listAll(env, "p")).map((k) => ({ id: +k.name.slice(1), ...(k.metadata || {}) }));
+  return (await listAll(env, "p")).filter((k) => k.metadata).map((k) => ({ id: +k.name.slice(1), ...k.metadata }));
+}
+
+// Сегменты для рассылки
+function inSeg(u, seg) {
+  if (u.b || u.x) return false;
+  const [k, v] = String(seg || "all").split(":");
+  const last = u.a || u.s;
+  switch (k) {
+    case "all": return true;
+    case "new7": return u.s >= ago(6);
+    case "act7": return !!u.a && u.a >= ago(6);
+    case "idle7": return last < ago(7);
+    case "idle30": return last < ago(30);
+    case "noapp": return !u.a;
+    case "goal": return u.g === v;
+    case "level": return String(u.lv) === v;
+    case "place": return u.pl === v;
+    case "src": return (u.src || "") === (v || "");
+    default: return false;
+  }
+}
+async function recipients(env, seg) {
+  return (await users(env)).filter((u) => inSeg(u, seg)).sort((x, y) => x.id - y.id);
 }
 
 const webhookSecret = async (env) => [...new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode("wh" + env.BOT_TOKEN)))].slice(0, 16).map((b) => b.toString(16).padStart(2, "0")).join("");
-
 async function setWebhook(env, origin) {
   return tgApi(env, "setWebhook", { url: origin + "/tg", secret_token: await webhookSecret(env), allowed_updates: ["message", "my_chat_member"] });
+}
+
+// Отправка одного сообщения рассылки. 403 — человек заблокировал бота, отмечаем.
+async function deliver(env, u, b) {
+  const markup = b.button ? appBtn(env, String(b.button).slice(0, 40)) : undefined;
+  const text = String(b.text || "").replace(/\{name\}/g, u.f || "друг");
+  const r = b.photo
+    ? await tgApi(env, "sendPhoto", { chat_id: u.id, photo: b.photo, caption: text.slice(0, 1024), reply_markup: markup })
+    : await tgApi(env, "sendMessage", { chat_id: u.id, text: text.slice(0, 4096), reply_markup: markup });
+  if (r.status === 403) await patchMeta(env, u.id, { b: 1 });
+  return r.status === 200;
+}
+
+// ===================== СООБЩЕНИЯ =====================
+// m<uid>:<время> — одно сообщение переписки, metadata {d: in|out, t: начало текста}
+async function saveMsg(env, uid, dir, text) {
+  const t = String(text || "").slice(0, 2000);
+  await env.REMINDERS.put(`m${uid}:${Date.now().toString().padStart(14, "0")}`, t, { metadata: { d: dir, t: t.slice(0, 160) } });
+}
+async function conversations(env) {
+  const keys = await listAll(env, "m");
+  const seen = (await env.REMINDERS.get("seen", "json")) || {};
+  const by = {};
+  for (const k of keys) {
+    const [uid, ts] = k.name.slice(1).split(":");
+    const c = by[uid] || (by[uid] = { id: +uid, count: 0, unread: 0, last: 0 });
+    c.count++;
+    if (+ts > c.last) { c.last = +ts; c.t = k.metadata.t; c.d = k.metadata.d; }
+    if (k.metadata.d === "in" && +ts > (seen[uid] || 0)) c.unread++;
+  }
+  return Object.values(by).sort((a, b) => b.last - a.last);
 }
 
 // ===================== АДМИНКА =====================
@@ -175,39 +288,155 @@ async function admin(env, user, body, url) {
       if (k.metadata && "on" in k.metadata) { if (k.metadata.on) remOn++; }
       else { const v = await env.REMINDERS.get(k.name, "json"); if (v && v.on) remOn++; }
     }
-    const ago = (n) => new Date(Date.now() - n * 86400000).toISOString().slice(0, 10);
     const cnt = (f) => U.filter(f).length;
+    const tally = (key) => { const o = {}; for (const u of U) { const v = u[key]; if (v !== "" && v != null && v !== 0) o[v] = (o[v] || 0) + 1; } return o; };
+    // графики за 30 дней
+    const D = dayN(), days = [...Array(30)].map((_, i) => D - 29 + i);
+    const newBy = days.map((d) => cnt((u) => Math.floor(Date.parse(u.s) / 86400000) === d));
+    const dau = days.map((d) => { const k = d.toString(36); return cnt((u) => String(u.h || "").split(".").includes(k)); });
+    // сколько дней человек остаётся (для тех, кто пришёл неделю назад и раньше)
+    const old = U.filter((u) => u.a && u.s <= ago(7));
+    const life = (u) => Math.round((Date.parse(u.a) - Date.parse(u.s)) / 86400000);
+    const ret = { d0: 0, d1_3: 0, d4_7: 0, d8_30: 0, d30: 0, alive: 0 };
+    for (const u of old) { const L = life(u); if (u.a >= ago(6)) ret.alive++; if (L === 0) ret.d0++; else if (L <= 3) ret.d1_3++; else if (L <= 7) ret.d4_7++; else if (L <= 30) ret.d8_30++; else ret.d30++; }
+    const ex = {}; for (const u of U) for (const e of String(u.e || "").split(",").filter(Boolean)) ex[e] = (ex[e] || 0) + 1;
     const wh = await tgApi(env, "getWebhookInfo", {});
-    const list = U.sort((x, y) => String(y.a || y.s).localeCompare(String(x.a || x.s))).slice(0, 300);
+    const conv = await conversations(env);
     return json({ ok: true,
-      total: U.length, blocked: cnt((u) => u.b), reminders: remOn,
+      total: U.length, blocked: cnt((u) => u.b), banned: cnt((u) => u.x), reminders: remOn,
       newDay: cnt((u) => u.s >= ago(0)), newWeek: cnt((u) => u.s >= ago(6)), newMonth: cnt((u) => u.s >= ago(29)),
       actDay: cnt((u) => u.a >= ago(0)), actWeek: cnt((u) => u.a >= ago(6)), actMonth: cnt((u) => u.a >= ago(29)),
       workouts: U.reduce((s, u) => s + (u.w || 0), 0), runs: U.reduce((s, u) => s + (u.r || 0), 0),
+      days: days.map((d) => new Date(d * 86400000).toISOString().slice(0, 10)), newBy, dau, ret, retBase: old.length,
+      goals: tally("g"), levels: tally("lv"), places: tally("pl"), sources: tally("src"), ex,
+      unread: conv.reduce((s, c) => s + c.unread, 0),
       webhook: !!(wh.j && wh.j.result && wh.j.result.url && wh.j.result.url.endsWith("/tg")),
-      users: list });
+      users: U.sort((x, y) => String(y.a || y.s).localeCompare(String(x.a || x.s))) });
   }
   if (a === "admin_webhook") { const wh = await setWebhook(env, url.origin); return json({ ok: wh.status === 200 }); }
 
+  if (a === "admin_user") {
+    const id = +body.id, { meta, val } = await getUser(env, id);
+    if (!meta) return json({ ok: false, error: "not found" }, 404);
+    const msgs = (await listAll(env, `m${id}:`)).slice(-50).map((k) => ({ ts: +k.name.split(":")[1], d: k.metadata.d, t: k.metadata.t }));
+    for (const m of msgs) if (m.t.length >= 160) m.t = (await env.REMINDERS.get(`m${id}:${String(m.ts).padStart(14, "0")}`)) || m.t;
+    const rem = await env.REMINDERS.get("u" + id, "json");
+    return json({ ok: true, user: { id, ...meta }, data: val, msgs, reminders: !!(rem && rem.on) });
+  }
+  if (a === "admin_inbox") {
+    const conv = await conversations(env);
+    const U = Object.fromEntries((await users(env)).map((u) => [u.id, u]));
+    return json({ ok: true, list: conv.map((c) => ({ ...c, f: (U[c.id] || {}).f || "", l: (U[c.id] || {}).l || "", n: (U[c.id] || {}).n || "" })) });
+  }
+  if (a === "admin_read") {
+    const seen = (await env.REMINDERS.get("seen", "json")) || {};
+    seen[+body.id] = Date.now(); await env.REMINDERS.put("seen", JSON.stringify(seen));
+    return json({ ok: true });
+  }
+  if (a === "admin_msg") {
+    const id = +body.id, text = String(body.text || "").trim().slice(0, 4000);
+    if (!text) return json({ ok: false, error: "empty" }, 400);
+    const r = await tgApi(env, "sendMessage", { chat_id: id, text });
+    if (r.status === 403) await patchMeta(env, id, { b: 1 });
+    if (r.status === 200) await saveMsg(env, id, "out", text);
+    return json({ ok: r.status === 200, status: r.status });
+  }
+  if (a === "admin_ban") { await patchMeta(env, +body.id, { x: body.ban ? 1 : 0 }); return json({ ok: true }); }
+
+  if (a === "admin_count") return json({ ok: true, n: (await recipients(env, body.seg)).length });
   if (a === "admin_send") {
     // Рассылка частями по 40 сообщений за запрос (лимит бесплатного воркера — 50 внешних запросов).
-    const text = String(body.text || "").trim().slice(0, 4000);
+    const text = String(body.text || "").trim();
     if (!text) return json({ ok: false, error: "empty" }, 400);
-    const markup = body.button ? { inline_keyboard: [[{ text: String(body.button).slice(0, 40), web_app: { url: env.APP_URL } }]] } : undefined;
-    const msg = (id) => tgApi(env, "sendMessage", { chat_id: id, text, reply_markup: markup });
-    if (body.test) { const r = await msg(user.id); return json({ ok: r.status === 200 }); }
-    const U = (await users(env)).filter((u) => !u.b).sort((x, y) => x.id - y.id);
+    const photo = body.photo ? await env.REMINDERS.get("admin_photo") : null;
+    const b = { text, button: body.button, photo };
+    if (body.test) return json({ ok: await deliver(env, { id: user.id, f: user.first_name }, b) });
+    const U = await recipients(env, body.seg);
     const from = +body.offset || 0, part = U.slice(from, from + 40);
     let sent = 0, failed = 0;
-    for (const u of part) {
-      const r = await msg(u.id);
-      if (r.status === 200) sent++;
-      else { failed++; if (r.status === 403) { const { id, ...m } = u; await env.REMINDERS.put("p" + id, "1", { metadata: { ...m, b: 1 } }); } }
-    }
+    for (const u of part) (await deliver(env, u, b)) ? sent++ : failed++;
     const next = from + part.length;
     return json({ ok: true, sent, failed, total: U.length, next, done: next >= U.length });
   }
+  if (a === "admin_schedule") {
+    const at = Date.parse(body.at);
+    if (!body.text || !at) return json({ ok: false, error: "bad" }, 400);
+    const photo = body.photo ? await env.REMINDERS.get("admin_photo") : null;
+    const key = "bc" + Date.now();
+    await env.REMINDERS.put(key, JSON.stringify({ text: String(body.text).slice(0, 4000), button: body.button || "", photo, seg: body.seg || "all", segName: String(body.segName || "").slice(0, 60), at, offset: 0, sent: 0, failed: 0, status: "wait" }));
+    return json({ ok: true });
+  }
+  if (a === "admin_scheduled") {
+    const out = [];
+    for (const k of await listAll(env, "bc")) { const v = await env.REMINDERS.get(k.name, "json"); if (v) out.push({ key: k.name, ...v, photo: !!v.photo }); }
+    return json({ ok: true, list: out.sort((x, y) => y.at - x.at).slice(0, 20) });
+  }
+  if (a === "admin_unschedule") { if (String(body.key).startsWith("bc")) await env.REMINDERS.delete(body.key); return json({ ok: true }); }
+  if (a === "admin_photo") return json({ ok: true, has: !!(await env.REMINDERS.get("admin_photo")) });
+  if (a === "admin_photo_clear") { await env.REMINDERS.delete("admin_photo"); return json({ ok: true }); }
+
+  if (a === "admin_cfg") {
+    const cfg = await getCfg(env);
+    if (body.set) {
+      const s = body.set;
+      if ("nudge" in s) cfg.nudge = !!s.nudge;
+      if ("milestones" in s) cfg.milestones = !!s.milestones;
+      if ("nudgeDays" in s) cfg.nudgeDays = Math.min(30, Math.max(2, +s.nudgeDays || 5));
+      if ("nudgeText" in s) cfg.nudgeText = String(s.nudgeText).slice(0, 1000);
+      await env.REMINDERS.put("cfg", JSON.stringify(cfg));
+    }
+    let bot = await env.REMINDERS.get("botname");
+    if (!bot) { const r = await tgApi(env, "getMe", {}); bot = r.j && r.j.result && r.j.result.username; if (bot) await env.REMINDERS.put("botname", bot); }
+    return json({ ok: true, cfg, bot });
+  }
+  if (a === "admin_export") {
+    const U = await users(env);
+    const q = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+    const rows = [["ID", "Имя", "Фамилия", "Ник", "Первый вход", "Последняя активность", "Тренировок", "Пробежек", "Цель", "Уровень", "Место", "Источник", "Нажал /start", "Заблокировал бота", "Бан"]];
+    for (const u of U) rows.push([u.id, u.f, u.l, u.n ? "@" + u.n : "", u.s, u.a, u.w || 0, u.r || 0, LABELS.g[u.g] || "", LABELS.lv[u.lv] || "", LABELS.pl[u.pl] || "", u.src, u.st ? "да" : "", u.b ? "да" : "", u.x ? "да" : ""]);
+    const csv = "﻿" + rows.map((r) => r.map(q).join(";")).join("\r\n");
+    const fd = new FormData();
+    fd.append("chat_id", String(user.id));
+    fd.append("caption", `Пользователи AI-Тренера: ${U.length}. Откройте файл в Excel или Google Таблицах.`);
+    fd.append("document", new Blob([csv], { type: "text/csv" }), `users-${today()}.csv`);
+    const r = await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/sendDocument`, { method: "POST", body: fd });
+    return json({ ok: r.status === 200 });
+  }
   return json({ ok: false, error: "unknown action" }, 400);
+}
+
+// ===================== ПО РАСПИСАНИЮ =====================
+async function runScheduled(env, budget) {
+  for (const k of await listAll(env, "bc")) {
+    if (budget.left <= 0) return;
+    const b = await env.REMINDERS.get(k.name, "json");
+    if (!b || b.status === "done" || b.at > Date.now()) continue;
+    const U = await recipients(env, b.seg);
+    const part = U.slice(b.offset, b.offset + budget.left);
+    for (const u of part) { budget.left--; (await deliver(env, u, b)) ? b.sent++ : b.failed++; }
+    b.offset += part.length; b.status = b.offset >= U.length ? "done" : "run";
+    await env.REMINDERS.put(k.name, JSON.stringify(b));
+  }
+  // старые выполненные рассылки храним 30 дней
+  for (const k of await listAll(env, "bc")) if (+k.name.slice(2) < Date.now() - 30 * 86400000) await env.REMINDERS.delete(k.name);
+}
+
+// «Ты давно не тренировался» — в 18:00 по времени человека, один раз после каждого перерыва
+async function nudges(env, budget) {
+  const cfg = await getCfg(env);
+  if (!cfg.nudge || budget.left <= 0) return;
+  for (const u of await users(env)) {
+    if (budget.left <= 0) return;
+    if (u.b || u.x || !u.a) continue;
+    const idle = Math.floor((Date.now() - Date.parse(u.a)) / 86400000);
+    if (idle < cfg.nudgeDays || (u.nd && u.nd >= u.a)) continue;
+    let L; try { L = localParts(u.tz || "Europe/Moscow"); } catch { L = localParts("Europe/Moscow"); }
+    if (L.min < 18 * 60 || L.min >= 18 * 60 + 15) continue;
+    budget.left--;
+    const text = cfg.nudgeText.replace(/\{days\}/g, idle).replace(/\{name\}/g, u.f || "друг");
+    const r = await tgApi(env, "sendMessage", { chat_id: u.id, text, reply_markup: appBtn(env) });
+    await patchMeta(env, u.id, r.status === 403 ? { b: 1, nd: today() } : { nd: today() });
+  }
 }
 
 // ===================== БОТ (вебхук) =====================
@@ -217,19 +446,58 @@ async function onUpdate(req, env) {
   try {
     const cm = up.my_chat_member;
     if (cm && cm.chat.type === "private") {
-      const key = "p" + cm.from.id, old = await env.REMINDERS.getWithMetadata(key);
       const blocked = cm.new_chat_member.status === "kicked";
-      if (old.value || !blocked) await env.REMINDERS.put(key, "1", { metadata: { ...(old.metadata || { s: today(), a: "", w: 0, r: 0, st: 0 }), f: cm.from.first_name || "", n: cm.from.username || "", b: blocked ? 1 : 0 } });
+      const { meta } = await getUser(env, cm.from.id);
+      if (meta) await patchMeta(env, cm.from.id, { b: blocked ? 1 : 0 });
+      else if (!blocked) await touch(env, cm.from, {}, "start");
     }
     const m = up.message;
-    if (m && m.chat.type === "private" && m.from) {
-      await touch(env, m.from, {}, "start");
-      const name = m.from.first_name ? `, ${m.from.first_name}` : "";
-      const hi = /^\/start/.test(m.text || "")
-        ? `Привет${name}! Я AI-Тренер 💪\nСоставлю тренировки под твой инвентарь и цель, проведу по ним с таймером, посчитаю пробежку и напомню о занятиях.\n\nЖми кнопку, чтобы начать.`
-        : "Все тренировки внутри приложения, жми кнопку 👇";
-      await tgApi(env, "sendMessage", { chat_id: m.chat.id, text: hi, reply_markup: { inline_keyboard: [[{ text: "Открыть AI-Тренер", web_app: { url: env.APP_URL } }]] } });
-    }
-  } catch (e) {}
+    if (m && m.chat.type === "private" && m.from) await onMessage(env, m);
+  } catch (e) { console.log("update error", e && e.stack); }
   return new Response("ok");
+}
+
+async function onMessage(env, m) {
+  const from = m.from, text = m.text || m.caption || "";
+  const admins = await adminIds(env);
+  const isAdm = admins.includes(String(from.id));
+  if (isAdm) {
+    // фото от админа — картинка для рассылки
+    if (m.photo && m.photo.length) {
+      await env.REMINDERS.put("admin_photo", m.photo[m.photo.length - 1].file_id);
+      await tgApi(env, "sendMessage", { chat_id: m.chat.id, text: "🖼 Картинка сохранена для рассылки. Включите «Картинка» в админ-панели." });
+      return;
+    }
+    // ответ на уведомление о сообщении пользователя
+    const ref = m.reply_to_message && (m.reply_to_message.text || m.reply_to_message.caption || "").match(/#id(\d+)/);
+    if (ref && text) {
+      const id = +ref[1];
+      const r = await tgApi(env, "sendMessage", { chat_id: id, text });
+      if (r.status === 200) await saveMsg(env, id, "out", text);
+      if (r.status === 403) await patchMeta(env, id, { b: 1 });
+      await tgApi(env, "sendMessage", { chat_id: m.chat.id, text: r.status === 200 ? "✅ Отправлено" : "❌ Не доставлено: пользователь заблокировал бота" });
+      return;
+    }
+  }
+  const { meta } = await getUser(env, from.id);
+  if (meta && meta.x) return; // бан
+  const start = /^\/start(?:\s+(\S+))?/.exec(text);
+  if (start) {
+    await touch(env, from, { src: start[1] || "" }, "start");
+    const name = from.first_name ? `, ${from.first_name}` : "";
+    await tgApi(env, "sendMessage", { chat_id: m.chat.id, text: `Привет${name}! Я AI-Тренер 💪\nСоставлю тренировки под твой инвентарь и цель, проведу по ним с таймером, посчитаю пробежку и напомню о занятиях.\n\nЖми кнопку, чтобы начать. А если есть вопрос, просто напиши его сюда.`, reply_markup: appBtn(env) });
+    return;
+  }
+  if (isAdm) { await tgApi(env, "sendMessage", { chat_id: m.chat.id, text: "Вы администратор. Пришлите фото, чтобы использовать его в рассылке, или ответьте на уведомление о сообщении пользователя.", reply_markup: appBtn(env) }); return; }
+  // сообщение пользователя — в «Сообщения» админ-панели и уведомление админу
+  if (!meta) await touch(env, from, {}, "start");
+  const kind = m.photo ? "[фото] " : m.video ? "[видео] " : m.voice ? "[голосовое] " : m.document ? "[файл] " : m.sticker ? "[стикер] " : "";
+  const body = (kind + text).trim() || "[сообщение]";
+  await saveMsg(env, from.id, "in", body);
+  const who = [from.first_name, from.last_name].filter(Boolean).join(" ") + (from.username ? ` (@${from.username})` : "");
+  for (const aid of admins) {
+    await tgApi(env, "sendMessage", { chat_id: aid, text: `✉️ ${who} #id${from.id}\n\n${body}\n\nОтветьте на это сообщение (свайп влево), чтобы написать в ответ.` });
+    if (kind) await tgApi(env, "forwardMessage", { chat_id: aid, from_chat_id: m.chat.id, message_id: m.message_id });
+  }
+  await tgApi(env, "sendMessage", { chat_id: m.chat.id, text: "Получил, передал тренеру. Ответ придёт сюда 👌" });
 }

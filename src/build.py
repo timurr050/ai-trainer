@@ -11,6 +11,8 @@ css = (src / "styles.css").read_text()
 app = (src / "app.js").read_text()
 assert app.count("// @@RUN@@") == 1
 app = app.replace("// @@RUN@@", (src / "run.js").read_text())
+assert app.count("// @@ADMIN@@") == 1
+app = app.replace("// @@ADMIN@@", (src / "admin.js").read_text())
 js = "\n".join((src / f).read_text() for f in ["data.js", "exdb.js"]) + "\n;\n" + app
 
 # один файл
