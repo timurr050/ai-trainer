@@ -2,9 +2,11 @@ name = "ai-trainer"
 main = "reminders.js"
 compatibility_date = "2026-09-01"
 workers_dev = true
+minify = true
 
 [vars]
 APP_URL = "https://timurr050.github.io/ai-trainer/"
+AI_PROVIDER = "workers"
 
 [[kv_namespaces]]
 binding = "REMINDERS"
@@ -12,3 +14,12 @@ id = "c7a1b1c223ce4a9ca6a3e5626fdfdc2b"
 
 [triggers]
 crons = ["*/15 * * * *"]
+
+# AI-тренер: бесплатный Workers AI. Чтобы перейти на Claude: AI_PROVIDER = "claude" и секрет ANTHROPIC_API_KEY
+[ai]
+binding = "AI"
+
+[[rules]]
+type = "Data"
+globs = ["**/*.ttf"]
+fallthrough = true

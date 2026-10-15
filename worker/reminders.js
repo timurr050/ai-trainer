@@ -13,6 +13,8 @@
 // читался одним запросом), admin — ID владельца (первый, кто нажал «Стать администратором»).
 // Бот: Telegram шлёт сюда обновления на /tg (вебхук ставится из админ-панели), отвечаем на /start.
 
+import { ask, chatHistory, chatReset, makePdf, pdfTitle, looksLikePlan, toTelegram, splitMsg } from "./coach.js";
+
 const CORS = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Methods": "POST, OPTIONS", "Access-Control-Allow-Headers": "Content-Type" };
 const json = (o, status = 200) => new Response(JSON.stringify(o), { status, headers: { "Content-Type": "application/json", ...CORS } });
 
@@ -90,12 +92,14 @@ export default {
     if (req.method === "OPTIONS") return new Response(null, { headers: CORS });
     const url = new URL(req.url);
     if (url.pathname === "/tg") return onUpdate(req, env);
+    if (url.pathname === "/setup" || url.pathname === "/aitest") return service(req, env, url);
     if (req.method !== "POST") return json({ ok: true, service: "ai-trainer reminders" });
     let body; try { body = await req.json(); } catch { return json({ ok: false, error: "bad json" }, 400); }
     const user = await checkInitData(body.initData || "", env.BOT_TOKEN);
     if (!user) return json({ ok: false, error: "bad initData" }, 401);
     if (body.action === "hello") return hello(env, user, body);
     if (String(body.action || "").startsWith("admin")) return admin(env, user, body, url);
+    if (String(body.action || "").startsWith("chat")) return chatApi(env, user, body);
     const key = "u" + user.id;
     if (body.action === "test") { const st = await send(env, user.id, "Напоминания работают ✅ Я напишу накануне тренировки и в её день."); return json({ ok: st === 200, status: st }); }
     const old = (await env.REMINDERS.get(key, "json")) || {};
@@ -235,7 +239,7 @@ async function recipients(env, seg) {
 
 const webhookSecret = async (env) => [...new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode("wh" + env.BOT_TOKEN)))].slice(0, 16).map((b) => b.toString(16).padStart(2, "0")).join("");
 async function setWebhook(env, origin) {
-  return tgApi(env, "setWebhook", { url: origin + "/tg", secret_token: await webhookSecret(env), allowed_updates: ["message", "my_chat_member"] });
+  return tgApi(env, "setWebhook", { url: origin + "/tg", secret_token: await webhookSecret(env), allowed_updates: ["message", "my_chat_member", "callback_query"] });
 }
 
 // Отправка одного сообщения рассылки. 403 — человек заблокировал бота, отмечаем.
@@ -451,6 +455,7 @@ async function onUpdate(req, env) {
       if (meta) await patchMeta(env, cm.from.id, { b: blocked ? 1 : 0 });
       else if (!blocked) await touch(env, cm.from, {}, "start");
     }
+    if (up.callback_query) await onCallback(env, up.callback_query);
     const m = up.message;
     if (m && m.chat.type === "private" && m.from) await onMessage(env, m);
   } catch (e) { console.log("update error", e && e.stack); }
@@ -485,13 +490,16 @@ async function onMessage(env, m) {
   if (start) {
     await touch(env, from, { src: start[1] || "" }, "start");
     const name = from.first_name ? `, ${from.first_name}` : "";
-    await tgApi(env, "sendMessage", { chat_id: m.chat.id, text: `Привет${name}! Я AI-Тренер 💪\nСоставлю тренировки под твой инвентарь и цель, проведу по ним с таймером, посчитаю пробежку и напомню о занятиях.\n\nЖми кнопку, чтобы начать. А если есть вопрос, просто напиши его сюда.`, reply_markup: appBtn(env) });
+    await tgApi(env, "sendMessage", { chat_id: m.chat.id, text: `Привет${name}! Я AI-Тренер 💪\nСоставлю тренировки под твой инвентарь и цель, проведу по ним с таймером, посчитаю пробежку и напомню о занятиях.\n\nЖми кнопку, чтобы начать. А если есть вопрос про тренировки или питание, просто напиши его сюда: отвечу как AI-тренер. Например: «Составь план питания на 1800 ккал».`, reply_markup: appBtn(env) });
     return;
   }
-  if (isAdm) { await tgApi(env, "sendMessage", { chat_id: m.chat.id, text: "Вы администратор. Пришлите фото, чтобы использовать его в рассылке, или ответьте на уведомление о сообщении пользователя.", reply_markup: appBtn(env) }); return; }
-  // сообщение пользователя — в «Сообщения» админ-панели и уведомление админу
   if (!meta) await touch(env, from, {}, "start");
   const kind = m.photo ? "[фото] " : m.video ? "[видео] " : m.voice ? "[голосовое] " : m.document ? "[файл] " : m.sticker ? "[стикер] " : "";
+  // текстовый вопрос — отвечает AI-тренер
+  if (m.text && !kind && !/^\/(?!coach|trainer)/.test(m.text)) { await botAsk(env, m, isAdm); return; }
+  if (/^\/(new|reset)\b/.test(text)) { await chatReset(env, from.id); await tgApi(env, "sendMessage", { chat_id: m.chat.id, text: "Начали разговор заново. Спрашивай 🙂" }); return; }
+  if (isAdm) { await tgApi(env, "sendMessage", { chat_id: m.chat.id, text: "Вы администратор. Пришлите фото, чтобы использовать его в рассылке, или ответьте на уведомление о сообщении пользователя. Текстовые вопросы отвечает AI-тренер.", reply_markup: appBtn(env) }); return; }
+  // фото, голосовые и файлы — в «Сообщения» админ-панели и уведомление админу
   const body = (kind + text).trim() || "[сообщение]";
   await saveMsg(env, from.id, "in", body);
   const who = [from.first_name, from.last_name].filter(Boolean).join(" ") + (from.username ? ` (@${from.username})` : "");
@@ -500,4 +508,77 @@ async function onMessage(env, m) {
     if (kind) await tgApi(env, "forwardMessage", { chat_id: aid, from_chat_id: m.chat.id, message_id: m.message_id });
   }
   await tgApi(env, "sendMessage", { chat_id: m.chat.id, text: "Получил, передал тренеру. Ответ придёт сюда 👌" });
+}
+
+// ===================== AI-ТРЕНЕР =====================
+async function botAsk(env, m, isAdm) {
+  const from = m.from;
+  await tgApi(env, "sendChatAction", { chat_id: m.chat.id, action: "typing" });
+  const { val } = await getUser(env, from.id);
+  const q = m.text.replace(/^\/(coach|trainer)(@\w+)?\s*/, "");
+  if (!q.trim()) { await tgApi(env, "sendMessage", { chat_id: m.chat.id, text: "Напиши вопрос про тренировки, бег или питание, я отвечу 💪" }); return; }
+  const r = await ask(env, from, q, val, isAdm);
+  if (!r.ok) { await tgApi(env, "sendMessage", { chat_id: m.chat.id, text: r.text }); return; }
+  const parts = splitMsg(toTelegram(r.text));
+  for (let i = 0; i < parts.length; i++) {
+    const last = i === parts.length - 1;
+    const kb = last && looksLikePlan(r.text) ? { inline_keyboard: [[{ text: "📄 Скачать PDF", callback_data: "pdf:" + r.t }]] } : undefined;
+    const res = await tgApi(env, "sendMessage", { chat_id: m.chat.id, text: parts[i], parse_mode: "HTML", reply_markup: kb });
+    // если HTML не прошёл проверку Telegram — отправляем обычным текстом
+    if (res.status === 400) await tgApi(env, "sendMessage", { chat_id: m.chat.id, text: parts[i].replace(/<[^>]+>/g, "").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&"), reply_markup: kb });
+  }
+}
+
+async function sendPdf(env, chatId, user, msgT) {
+  const { h } = await chatHistory(env, user.id);
+  const i = msgT ? h.findIndex((x) => x.t === +msgT && x.r === "a") : h.map((x) => x.r).lastIndexOf("a");
+  if (i < 0) return false;
+  const ans = h[i].c, q = i > 0 && h[i - 1].r === "u" ? h[i - 1].c : "";
+  const title = pdfTitle(ans, q);
+  const bytes = await makePdf(ans, title, [user.first_name, user.last_name].filter(Boolean).join(" "));
+  const fd = new FormData();
+  fd.append("chat_id", String(chatId));
+  fd.append("caption", `📄 ${title}`);
+  const name = title.replace(/[^\p{L}\p{N}]+/gu, "-").replace(/^-|-$/g, "").slice(0, 50) || "plan";
+  fd.append("document", new Blob([bytes], { type: "application/pdf" }), `${name}.pdf`);
+  const r = await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/sendDocument`, { method: "POST", body: fd });
+  return r.status === 200;
+}
+
+async function onCallback(env, cq) {
+  const m = /^pdf:(\d+)$/.exec(cq.data || "");
+  if (!m) { await tgApi(env, "answerCallbackQuery", { callback_query_id: cq.id }); return; }
+  await tgApi(env, "answerCallbackQuery", { callback_query_id: cq.id, text: "Готовлю PDF…" });
+  await tgApi(env, "sendChatAction", { chat_id: cq.from.id, action: "upload_document" });
+  const ok = await sendPdf(env, cq.from.id, cq.from, m[1]);
+  if (!ok) await tgApi(env, "sendMessage", { chat_id: cq.from.id, text: "Этот ответ уже не найден в истории. Попроси план ещё раз, и я пришлю PDF." });
+}
+
+async function chatApi(env, user, body) {
+  const { meta, val } = await getUser(env, user.id);
+  if (meta && meta.x) return json({ ok: false, error: "banned" }, 403);
+  if (body.action === "chat_history") return json({ ok: true, ...(await chatHistory(env, user.id)) });
+  if (body.action === "chat_reset") { await chatReset(env, user.id); return json({ ok: true }); }
+  if (body.action === "chat_pdf") return json({ ok: await sendPdf(env, user.id, user, body.t) });
+  if (body.action === "chat") {
+    if (!meta) await touch(env, user, {}, "app");
+    // приложение присылает свежий профиль и последние тренировки; если нет — берём карточку с сервера
+    const ctx = body.ctx && typeof body.ctx === "object" && JSON.stringify(body.ctx).length < 6000 ? body.ctx : val;
+    const r = await ask(env, user, body.q, ctx, await isAdmin(env, user.id));
+    return json({ ...r, plan: r.ok && looksLikePlan(r.text) });
+  }
+  return json({ ok: false, error: "unknown action" }, 400);
+}
+
+// Служебные адреса для GitHub Actions после деплоя: защищены тем же секретом, что и вебхук
+async function service(req, env, url) {
+  if (req.headers.get("X-Service-Key") !== (await webhookSecret(env))) return new Response("forbidden", { status: 403 });
+  if (url.pathname === "/setup") { const r = await setWebhook(env, url.origin); return json({ ok: r.status === 200, tg: r.j }); }
+  const q = url.searchParams.get("q") || "Составь план питания на 1800 ккал на день для мужчины 30 лет";
+  const t0 = Date.now();
+  const r = await ask(env, { id: 0, first_name: "Тест" }, q, {}, true);
+  let pdf = 0, pdfErr = "";
+  if (r.ok) try { pdf = (await makePdf(r.text, pdfTitle(r.text, q), "Тест")).length; } catch (e) { pdfErr = String(e && e.stack || e); }
+  await env.REMINDERS.delete("c0");
+  return json({ ok: r.ok, ms: Date.now() - t0, pdfBytes: pdf, pdfErr, text: r.text, tg: r.ok ? toTelegram(r.text).slice(0, 1500) : "" });
 }

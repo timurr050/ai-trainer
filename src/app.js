@@ -327,7 +327,7 @@ function pop() { state.stack.pop(); navAnim = "back"; render(); const y = scroll
 $tabbar.addEventListener("click", (e) => { const b = e.target.closest("button"); if (!b) return; haptic(); go(b.dataset.tab); });
 if (tg) tg.BackButton.onClick(() => { haptic(); if (state.ob && state.obStep > 0) { state.obStep--; render(); } else if (state.ob && state.obReturn) { state.ob = null; render(); } else pop(); });
 
-const APP_VERSION = "3.8.2";
+const APP_VERSION = "3.9";
 let sessionClock = null;
 function render() {
   if (state.tab !== "timer") stopTicker();
@@ -340,7 +340,7 @@ function render() {
   if (reuse) {}
   else if (adm.flag.banned) html = viewBanned();
   else if (onboarding) html = viewOnboarding();
-  else if (top) html = ({ preview: viewPreview, session: viewSession, exercise: viewExercise, settings: viewSettings, builder: viewBuilder, run: viewRunDetail, admin: viewAdmin, admin_user: viewAdminUser })[top.type](top);
+  else if (top) html = ({ preview: viewPreview, session: viewSession, exercise: viewExercise, settings: viewSettings, builder: viewBuilder, run: viewRunDetail, admin: viewAdmin, admin_user: viewAdminUser, chat: viewChat })[top.type](top);
   else html = { coach: viewCoach, catalog: viewCatalog, run: viewRun, timer: viewTimer, history: viewHistory, progress: viewProgress }[state.tab]();
   killMap();
   if (reuse) $app.replaceChildren(...reuse.nodes);
@@ -352,7 +352,7 @@ function render() {
   const scr = $app.querySelector(".screen");
   if (scr) { scr.classList.remove("nav-fwd", "nav-back", "nav-tab"); if (navAnim) { void scr.offsetWidth; scr.classList.add("nav-" + navAnim); } }
   navAnim = "";
-  const hideTabs = adm.flag.banned || onboarding || (top && top.type === "session");
+  const hideTabs = adm.flag.banned || onboarding || (top && (top.type === "session" || top.type === "chat"));
   $tabbar.classList.toggle("hidden", !!hideTabs);
   $tabbar.querySelectorAll("button").forEach((b) => b.classList.toggle("active", b.dataset.tab === state.tab));
   if (tg) {
@@ -459,6 +459,8 @@ function viewCoach() {
     <button class="icon-btn" data-settings aria-label="Настройки">⚙️</button>
   </div>
   ${session}${hero}
+  <button class="row ask-coach" data-chat><div class="thumb">💬</div>
+    <div class="grow"><div class="title">Спросить AI-тренера</div><div class="sub">Питание, техника, восстановление. План питания в PDF</div></div><span class="chev">›</span></button>
   <div class="stats section" style="margin-top:12px">
     <div class="stat"><div class="big-num lime">${st.count}/${p.days}</div><div class="eyebrow">за неделю</div></div>
     <div class="stat"><div class="big-num">${st.minutes}</div><div class="eyebrow">минут</div></div>
@@ -712,6 +714,7 @@ function setRemind(patch) {
 
 
 // @@ADMIN@@
+// @@CHAT@@
 
 // ===================== НАСТРОЙКИ =====================
 function viewSettings() {
@@ -945,6 +948,8 @@ function bind() {
     setRemind({ [k]: !r[k] }); });
   on("[data-rtime]", (el) => { const [k, t] = el.dataset.rtime.split(/:(.+)/); setRemind({ [k]: t }); });
   bindAdmin(on);
+  bindChat(on);
+  on("[data-chat]", () => push({ type: "chat" }));
   on("[data-remind-test]", () => syncRemind({ action: "test" }).then((res) => toast(res && res.ok ? "Отправил тестовое сообщение в чат" : "Не получилось, проверь, что бот не заблокирован")));
   // бег
   on("[data-run]", (el) => { const a = el.dataset.run;
