@@ -530,7 +530,7 @@ function render() {
   let html;
   const onboarding = !store.profile || state.ob;
   if (onboarding) html = viewOnboarding();
-  else if (top) html = ({ preview: viewPreview, session: viewSession, exercise: viewExercise, settings: viewSettings, builder: viewBuilder, run: viewRunDetail })[top.type](top);
+  else if (top) html = ({ preview: viewPreview, session: viewSession, exercise: viewExercise, settings: viewSettings, builder: viewBuilder, run: viewRunDetail, admin: viewAdmin })[top.type](top);
   else html = { coach: viewCoach, catalog: viewCatalog, run: viewRun, timer: viewTimer, history: viewHistory, progress: viewProgress }[state.tab]();
   killMap();
   const bar = !onboarding && (!top ? state.tab === "catalog" : top.type === "exercise") ? basketBar() : "";
@@ -764,7 +764,7 @@ function viewCatalog() {
     <button class="tile${e.db ? " tile-db" : ""}" data-ex="${e.id}">${pic(e, 500)}${store.basket.includes(e.id) ? `<span class="in-basket">✓</span>` : ""}
       <div class="cap"><span>${GROUPS[e.group].name}${e.eq.length ? "" : " · свой вес"}</span><b>${e.name}</b></div></button>`).join("") || `<div class="muted">Ничего не найдено</div>`}</div>
   ${n > shown.length ? `<div class="section"><button class="btn dark block" data-more>Показать ещё (${n - shown.length})</button></div>` : ""}
-  <div class="muted" style="font-size:12px;margin:18px 0 0;text-align:center">Версия 3.5</div>`;
+  <div class="muted" style="font-size:12px;margin:18px 0 0;text-align:center">Версия 3.6</div>`;
 }
 function basketBar() {
   const n = store.basket.length;
@@ -887,6 +887,90 @@ function setRemind(patch) {
   syncRemind({ force: true }).then((res) => { if (res && !res.ok) toast("Не получилось сохранить напоминания"); });
 }
 
+
+// ===================== АДМИН-ПАНЕЛЬ =====================
+// Видна только владельцу бота: сервер проверяет подпись Telegram и ID (worker/reminders.js).
+const adm = { flag: (() => { try { return JSON.parse(localStorage.getItem("adm") || "{}"); } catch (e) { return {}; } })(), data: null, loading: false, err: "", text: "", button: true, sending: null };
+function api(body) {
+  if (!tg || !tg.initData) return Promise.resolve(null);
+  return fetch(REMIND_URL, { method: "POST", headers: { "Content-Type": "text/plain" }, body: JSON.stringify({ initData: tg.initData, ...body }) }).then((x) => x.json()).catch(() => null);
+}
+function hello() {
+  const stats = { w: store.history.length, r: (store.runs || []).length };
+  const key = new Date().toDateString() + "|" + stats.w + "|" + stats.r;
+  try { if (localStorage.getItem("hello") === key) return; } catch (e) {}
+  api({ action: "hello", stats }).then((res) => {
+    if (!res || !res.ok) return;
+    try { localStorage.setItem("hello", key); } catch (e) {}
+    const f = { admin: !!res.admin, claimable: !!res.claimable };
+    if (f.admin !== !!adm.flag.admin || f.claimable !== !!adm.flag.claimable) { adm.flag = f; try { localStorage.setItem("adm", JSON.stringify(f)); } catch (e) {} if (state.stack.length && state.stack[state.stack.length - 1].type === "settings") render(); }
+  });
+}
+function adminLoad() {
+  adm.loading = true; adm.err = ""; render();
+  api({ action: "admin_stats" }).then((res) => {
+    adm.loading = false;
+    if (res && res.ok) adm.data = res; else adm.err = res && res.error === "forbidden" ? "Нет доступа" : "Не удалось загрузить, проверь интернет";
+    render();
+  });
+}
+function adminBlock() {
+  if (adm.flag.admin) return `<button class="row" data-admin style="padding:16px;margin-top:16px"><div class="grow"><div class="title" style="font-size:15px">🛠 Админ-панель</div><div class="sub" style="margin:4px 0 0">Пользователи, рассылка, статистика</div></div><span class="swap">Открыть</span></button>`;
+  if (adm.flag.claimable) return `<div class="card" style="margin-top:16px"><b>Вы владелец бота?</b><p class="muted" style="font-size:13px;margin:6px 0 12px">Админ-панель пока ни за кем не закреплена. Нажмите, и она станет доступна только с вашего аккаунта Telegram.</p><button class="btn" data-admin-claim>Стать администратором</button></div>`;
+  return "";
+}
+const ruN = (n, a, b, c) => { const m = n % 10, h = n % 100; return n + " " + (m === 1 && h !== 11 ? a : m >= 2 && m <= 4 && (h < 12 || h > 14) ? b : c); };
+const ruDate = (d) => { if (!d) return "—"; const [y, m, dd] = d.split("-"); return `${+dd}.${m}.${y.slice(2)}`; };
+function viewAdmin() {
+  const D = adm.data;
+  const head = `<div class="top"><div><button class="back" data-back style="background:var(--surface)">‹ Назад</button><div class="h1" style="margin-top:16px">Админ-панель</div></div></div>`;
+  if (!D) return head + `<div class="card" style="text-align:center;padding:32px">${adm.err ? `<p>${esc(adm.err)}</p><button class="btn" data-admin-reload style="margin-top:12px">Повторить</button>` : "Загружаю…"}</div>`;
+  const tile = (v, k) => `<div class="card" style="padding:14px"><div style="font:700 26px var(--display);color:var(--lime)">${v}</div><div class="muted" style="font-size:12px;margin-top:4px">${k}</div></div>`;
+  const grid = (a) => `<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">${a.join("")}</div>`;
+  const S = adm.sending;
+  const users = D.users.map((u) => {
+    const nm = esc([u.f, u.l].filter(Boolean).join(" ") || "Без имени");
+    return `<div class="row" style="padding:12px 16px;display:block"><div style="display:flex;justify-content:space-between;gap:8px"><b style="font-size:14px">${nm}${u.b ? ' <span class="muted">· заблокировал</span>' : ""}</b><span class="muted" style="font-size:12px;white-space:nowrap">${ruDate(u.a || u.s)}</span></div>
+      <div class="muted" style="font-size:12px;margin-top:4px">${u.n ? "@" + esc(u.n) + " · " : ""}с ${ruDate(u.s)} · ${ruN(u.w || 0, "тренировка", "тренировки", "тренировок")} · ${ruN(u.r || 0, "пробежка", "пробежки", "пробежек")}${!u.a ? " · приложение не открывал" : ""}</div></div>`;
+  }).join("");
+  return head + `
+  <div class="section"><div class="section-head"><div class="h2">Пользователи</div><button class="swap" data-admin-reload>${adm.loading ? "…" : "Обновить"}</button></div>
+    ${grid([tile(D.total, "всего"), tile(D.actWeek, "активны за неделю"), tile(D.reminders, "с напоминаниями")])}
+    <div class="card" style="margin-top:8px;font-size:14px;line-height:1.9">
+      <div style="display:flex;justify-content:space-between"><span class="muted">Новые: сегодня / неделя / месяц</span><b>${D.newDay} / ${D.newWeek} / ${D.newMonth}</b></div>
+      <div style="display:flex;justify-content:space-between"><span class="muted">Активные: сегодня / неделя / месяц</span><b>${D.actDay} / ${D.actWeek} / ${D.actMonth}</b></div>
+      <div style="display:flex;justify-content:space-between"><span class="muted">Тренировок / пробежек всего</span><b>${D.workouts} / ${D.runs}</b></div>
+      <div style="display:flex;justify-content:space-between"><span class="muted">Заблокировали бота</span><b>${D.blocked}</b></div>
+    </div>
+    ${D.webhook ? "" : `<div class="card" style="margin-top:8px"><b>Бот пока не отвечает на /start</b><p class="muted" style="font-size:13px;margin:6px 0 12px">Подключите, чтобы бот здоровался с новыми людьми и записывал их в список.</p><button class="btn" data-admin-webhook>Подключить</button></div>`}
+  </div>
+  <div class="section"><div class="section-head"><div class="h2">Рассылка</div></div>
+    <div class="card">
+      <textarea id="adm-text" rows="5" placeholder="Текст сообщения всем пользователям" style="width:100%;box-sizing:border-box;background:var(--bg);color:inherit;border:1px solid var(--line);border-radius:12px;padding:12px;font:inherit;font-size:15px;resize:vertical" ${S && !S.done ? "disabled" : ""}>${esc(adm.text)}</textarea>
+      <div class="pr" style="padding:12px 0 0"><span>Кнопка «Открыть приложение»</span><button class="toggle ${adm.button ? "on" : ""}" data-admin-btn><i></i></button></div>
+      ${S ? `<p style="margin:12px 0 0">${S.done ? `Готово: доставлено ${S.sent}${S.failed ? `, не доставлено ${S.failed}` : ""}.` : `Отправляю… ${S.sent + S.failed} из ${S.total}`}</p>` : ""}
+      <div style="display:flex;gap:8px;margin-top:12px"><button class="btn" data-admin-test style="flex:1;background:var(--surface);color:inherit">Себе</button><button class="btn" data-admin-send style="flex:2" ${S && !S.done ? "disabled" : ""}>Отправить всем (${D.total - D.blocked})</button></div>
+    </div>
+  </div>
+  <div class="section"><div class="section-head"><div class="h2">Список</div><span class="muted" style="font-size:13px">по последней активности</span></div>
+    <div class="list">${users || '<div class="card muted">Пока никого</div>'}</div>
+  </div>`;
+}
+function adminSend() {
+  const text = adm.text.trim(); if (!text) { toast("Напишите текст"); return; }
+  const n = adm.data.total - adm.data.blocked;
+  const go2 = () => {
+    adm.sending = { sent: 0, failed: 0, total: n, done: false }; render();
+    const step = (offset) => api({ action: "admin_send", text, button: adm.button ? "Открыть приложение" : "", offset }).then((r) => {
+      if (!r || !r.ok) { adm.sending.done = true; toast("Рассылка прервалась, проверь интернет"); render(); return; }
+      adm.sending.sent += r.sent; adm.sending.failed += r.failed; adm.sending.total = r.total;
+      if (r.done) { adm.sending.done = true; adm.text = ""; render(); } else { render(); step(r.next); }
+    });
+    step(0);
+  };
+  if (tg && tg.showConfirm) tg.showConfirm(`Отправить сообщение ${ruN(n, "пользователю", "пользователям", "пользователям")}?`, (ok) => ok && go2()); else if (confirm("Отправить всем?")) go2();
+}
+
 // ===================== НАСТРОЙКИ =====================
 function viewSettings() {
   const p = store.profile;
@@ -902,6 +986,7 @@ function viewSettings() {
   <div class="list">${rows.map(([k, v, step]) => `<button class="row" data-edit="${step}" style="padding:16px"><div class="grow"><div class="sub" style="margin:0 0 4px">${k}</div><div class="title" style="font-size:15px">${esc(v)}</div></div><span class="swap">Изменить</span></button>`).join("")}</div>
   <div class="coach" style="margin-top:16px"><div class="ava">AI</div><p>Когда меняешь инвентарь или цель, я сразу пересобираю план и все тренировки.</p></div>
   ${remindBlock()}
+  ${adminBlock()}
   <button class="danger-link" data-reset>Сбросить все данные</button>`;
 }
 
@@ -1117,6 +1202,17 @@ function bind() {
     if (k === "on" && !r.on && tg && tg.requestWriteAccess) { try { tg.requestWriteAccess((ok) => { if (ok) { setRemind({ on: true }); toast("Буду напоминать 🔔"); } else toast("Без разрешения бот не сможет писать"); }); return; } catch (e) {} }
     setRemind({ [k]: !r[k] }); });
   on("[data-rtime]", (el) => { const [k, t] = el.dataset.rtime.split(/:(.+)/); setRemind({ [k]: t }); });
+  on("[data-admin]", () => { push({ type: "admin" }); adminLoad(); });
+  on("[data-admin-reload]", () => adminLoad());
+  on("[data-admin-claim]", () => api({ action: "admin_claim" }).then((r) => {
+    if (r && r.ok) { adm.flag = { admin: true, claimable: false }; try { localStorage.setItem("adm", JSON.stringify(adm.flag)); } catch (e) {} toast("Готово, админ-панель ваша"); push({ type: "admin" }); adminLoad(); }
+    else toast(r && r.error === "taken" ? "Администратор уже назначен" : "Не получилось, попробуй ещё раз");
+  }));
+  on("[data-admin-webhook]", () => api({ action: "admin_webhook" }).then((r) => { toast(r && r.ok ? "Бот подключён" : "Не получилось подключить"); adminLoad(); }));
+  on("[data-admin-btn]", () => { adm.button = !adm.button; render(); });
+  on("[data-admin-test]", () => { if (!adm.text.trim()) { toast("Напишите текст"); return; } api({ action: "admin_send", test: 1, text: adm.text, button: adm.button ? "Открыть приложение" : "" }).then((r) => toast(r && r.ok ? "Отправил вам в чат" : "Не получилось отправить")); });
+  on("[data-admin-send]", () => adminSend());
+  const admText = document.getElementById("adm-text"); if (admText) admText.oninput = () => { adm.text = admText.value; };
   on("[data-remind-test]", () => syncRemind({ action: "test" }).then((res) => toast(res && res.ok ? "Отправил тестовое сообщение в чат" : "Не получилось, проверь, что бот не заблокирован")));
   // бег
   on("[data-run]", (el) => { const a = el.dataset.run;
@@ -1449,3 +1545,4 @@ try { const today = new Date().toDateString(); if (remindCfg().on && localStorag
 
 render();
 cloudLoad();
+hello();
