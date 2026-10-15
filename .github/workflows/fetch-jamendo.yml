@@ -1,0 +1,30 @@
+name: Fetch Jamendo deep house
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 3 * * 1"   # раз в неделю обновляем список
+  push:
+    branches: [main]
+    paths: [".github/workflows/fetch-jamendo.yml", "tools/fetch_jamendo.mjs"]
+permissions:
+  contents: write
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: node tools/fetch_jamendo.mjs
+        env:
+          JAMENDO_CLIENT_ID: ${{ secrets.JAMENDO_CLIENT_ID }}
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - name: Rebuild app and commit
+        run: |
+          python3 src/build.py
+          git config user.name "timurr050"
+          git config user.email "13timm@gmail.com"
+          git add music/jamendo.json app.js app.css index.html standalone.html version.txt
+          git commit -m "Обновлён список deep house с Jamendo" || echo "no changes"
+          git pull --rebase -q origin main && git push

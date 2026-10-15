@@ -1,5 +1,5 @@
 // ===================== МУЗЫКА ДЛЯ ТРЕНИРОВКИ =====================
-// Треки Kevin MacLeod (incompetech.com), лицензия CC BY 4.0, лежат в репозитории (music/*.mp3).
+// Источник: список deep house с Jamendo (music/jamendo.json, поток с их серверов), иначе треки Kevin MacLeod (CC BY 4.0) из music/*.mp3.
 // Список TRACKS собирает build.py из tools/music-log.txt. Мини-плеер сверху виден на всех экранах.
 const music = { on: false, i: 0, playing: false, shuffle: true, order: [], audio: null };
 try { Object.assign(music, JSON.parse(localStorage.getItem("music") || "{}"), { on: false, playing: false, audio: null }); } catch (e) {}
@@ -27,8 +27,8 @@ function musicLoad(i) {
   if (!TRACKS.length) return;
   music.i = ((i % TRACKS.length) + TRACKS.length) % TRACKS.length;
   const t = TRACKS[music.i], a = musicAudio();
-  a.src = "music/" + t.f + ".mp3";
-  if ("mediaSession" in navigator && window.MediaMetadata) { try { navigator.mediaSession.metadata = new MediaMetadata({ title: t.t, artist: "Kevin MacLeod", album: "AI-Тренер" }); } catch (e) {} }
+  a.src = t.u || "music/" + t.f + ".mp3";
+  if ("mediaSession" in navigator && window.MediaMetadata) { try { navigator.mediaSession.metadata = new MediaMetadata({ title: t.t, artist: t.a || "Kevin MacLeod", album: "AI-Тренер" }); } catch (e) {} }
   saveMusic();
 }
 function musicPlay() {
@@ -86,12 +86,12 @@ function viewMusic() {
   ${TRACKS.length ? `
   <div class="card music-now">
     <div class="eyebrow">${music.playing ? "Сейчас играет" : "Пауза"}</div>
-    <div class="title">${esc(cur ? cur.t : "")}</div><div class="sub">Kevin MacLeod</div>
+    <div class="title">${esc(cur ? cur.t : "")}</div><div class="sub">${esc((cur && cur.a) || "Kevin MacLeod")}</div>
     <div class="music-ctl"><button data-mc="prev" aria-label="Назад">${ICO.prev}</button><button data-mc="toggle" class="big" aria-label="Играть">${music.playing ? ICO.pause : ICO.play}</button><button data-mc="next" aria-label="Дальше">${ICO.next}</button></div>
     <button class="chip ${music.shuffle ? "active" : ""}" data-mc="shuffle" style="margin-top:16px"><span class="ico">${ICO.shuffle}</span>Вперемешку</button>
   </div>
-  <div class="list section">${TRACKS.map((t, i) => `<button class="row track ${i === music.i && music.on ? "cur" : ""}" data-track="${i}"><div class="grow"><div class="title">${esc(t.t)}</div><div class="sub">Kevin MacLeod · ${mmss(t.d)}</div></div><span class="trk-ico ${i === music.i && music.playing ? "on" : ""}">${i === music.i && music.playing ? '<span class="mq on"><i></i><i></i><i></i></span>' : ICO.play}</span></button>`).join("")}</div>
-  <div class="muted" style="font-size:12px;margin-top:16px;line-height:1.5">Музыка: Kevin MacLeod (incompetech.com), лицензия Creative Commons Attribution 4.0. Играет, пока открыто приложение.</div>`
+  <div class="list section">${TRACKS.map((t, i) => `<button class="row track ${i === music.i && music.on ? "cur" : ""}" data-track="${i}"><div class="grow"><div class="title">${esc(t.t)}</div><div class="sub">${esc(t.a || "Kevin MacLeod")} · ${mmss(t.d)}</div></div><span class="trk-ico ${i === music.i && music.playing ? "on" : ""}">${i === music.i && music.playing ? '<span class="mq on"><i></i><i></i><i></i></span>' : ICO.play}</span></button>`).join("")}</div>
+  <div class="muted" style="font-size:12px;margin-top:16px;line-height:1.5">${TRACKS.length && TRACKS[0].u ? `Музыка с Jamendo.com по лицензиям Creative Commons, автор указан у каждого трека.${cur && cur.s ? ` <a href="${esc(cur.s)}" target="_blank" style="color:var(--lime)">Страница трека</a>` : ""}` : "Музыка: Kevin MacLeod (incompetech.com), лицензия Creative Commons Attribution 4.0."} Играет, пока открыто приложение.</div>`
   : `<div class="empty"><div class="big">🎧</div><b>Музыка скоро появится</b></div>`}`;
 }
 function bindMusic(on) {

@@ -23,6 +23,12 @@ if log.exists():
         if p[0] == "ok" and int(p[3] or 0) >= 90 and (root / "music" / (p[1] + ".mp3")).exists():  # короткие лупы не берём
             tracks.append({"f": p[1], "t": p[2], "d": int(p[3] or 0)})
 import json as _json
+# если workflow fetch-jamendo.yml скачал список deep house — играем его (поток с серверов Jamendo)
+jam = root / "music" / "jamendo.json"
+if jam.exists():
+    jl = _json.loads(jam.read_text() or "[]")
+    if jl:
+        tracks = [{"u": t["u"], "t": t["t"], "a": t["a"], "d": t["d"], "s": t.get("s", ""), "l": t.get("l", "")} for t in jl]
 app = app.replace("// @@MUSIC@@", "const TRACKS = " + _json.dumps(tracks, ensure_ascii=False) + ";\n" + (src / "music.js").read_text())
 assert app.count("// @@CHAT@@") == 1
 app = app.replace("// @@CHAT@@", (src / "chat.js").read_text())
