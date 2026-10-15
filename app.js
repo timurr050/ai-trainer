@@ -764,7 +764,7 @@ function viewCatalog() {
     <button class="tile${e.db ? " tile-db" : ""}" data-ex="${e.id}">${pic(e, 500)}${store.basket.includes(e.id) ? `<span class="in-basket">✓</span>` : ""}
       <div class="cap"><span>${GROUPS[e.group].name}${e.eq.length ? "" : " · свой вес"}</span><b>${e.name}</b></div></button>`).join("") || `<div class="muted">Ничего не найдено</div>`}</div>
   ${n > shown.length ? `<div class="section"><button class="btn dark block" data-more>Показать ещё (${n - shown.length})</button></div>` : ""}
-  <div class="muted" style="font-size:12px;margin:18px 0 0;text-align:center">Версия 3.3</div>`;
+  <div class="muted" style="font-size:12px;margin:18px 0 0;text-align:center">Версия 3.4</div>`;
 }
 function basketBar() {
   const n = store.basket.length;
@@ -1123,8 +1123,11 @@ function bind() {
 
 // ===================== БЕГ НА УЛИЦЕ =====================
 // GPS-трек, секундомер, темп, калории, сплиты по км, карта маршрута (Leaflet + тайлы CARTO/OSM).
-const RUN_TILES = "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png";
-const RUN_ATTR = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/">CARTO</a>';
+// Карта OpenStreetMap без ключа; тёмный вид делаем фильтром. Если тайлы не грузятся — запасной сервер Esri.
+const RUN_TILES = "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
+const RUN_ATTR = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>';
+const RUN_TILES_2 = "https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}";
+const RUN_ATTR_2 = "&copy; Esri, OpenStreetMap";
 if (!Array.isArray(store.runs)) store.runs = [];
 
 // --- загрузка Leaflet по требованию (сначала своя копия, затем CDN) ---
@@ -1277,7 +1280,10 @@ async function mountMap(el, segs, opts = {}) {
   el.innerHTML = "";
   runMap = Lf.map(el, { zoomControl: false, attributionControl: true, dragging: !opts.live, scrollWheelZoom: false, tap: false }).setView(opts.center || [55.75, 37.62], opts.center ? 16 : 11);
   runMap.attributionControl.setPrefix(false);
-  Lf.tileLayer(RUN_TILES, { maxZoom: 19, subdomains: "abcd", attribution: RUN_ATTR }).addTo(runMap);
+  const tl = Lf.tileLayer(RUN_TILES, { maxZoom: 19, attribution: RUN_ATTR, className: "tiles-dark" }).addTo(runMap);
+  let bad = 0, ok = 0;
+  tl.on("tileload", () => ok++);
+  tl.on("tileerror", () => { if (++bad === 3 && !ok && runMap) { runMap.removeLayer(tl); Lf.tileLayer(RUN_TILES_2, { maxZoom: 19, attribution: RUN_ATTR_2, className: "tiles-dark" }).addTo(runMap); } });
   const all = [];
   segs.forEach((g) => { if (g.length) { runLine = Lf.polyline(g.map((p) => [p[0], p[1]]), { color: "#ccff00", weight: 5, opacity: 0.95 }).addTo(runMap); g.forEach((p) => all.push([p[0], p[1]])); } });
   if (opts.live) {

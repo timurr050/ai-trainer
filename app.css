@@ -301,3 +301,4 @@ img { display: block; }
 .runbar { position: fixed; left: 16px; right: 16px; top: calc(10px + env(safe-area-inset-top)); z-index: 16; display: flex; justify-content: space-between; align-items: center; background: var(--lime); color: #000; border-radius: 999px; padding: 10px 16px; font-weight: 800; font-size: 14px; box-shadow: 0 8px 30px rgba(0,0,0,.6); }
 .runbar b { font-variant-numeric: tabular-nums; }
 body.has-runbar .screen { padding-top: 46px; }
+.tiles-dark { filter: invert(1) hue-rotate(180deg) brightness(.9) contrast(.9) saturate(.6); }
