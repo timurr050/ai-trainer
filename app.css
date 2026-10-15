@@ -261,6 +261,11 @@ img { display: block; }
 .anim { position: absolute; inset: 0; cursor: pointer; overflow: hidden; --zoom: 1; }
 .anim img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; transform: scale(var(--zoom)); }
 .anim .f1 { opacity: 0; }
+.gifbox { position: absolute; inset: 0; background: #fff; }
+.anim .gifbox img, .gifbox canvas { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; transform: none; }
+.gifbox canvas { display: none; }
+.gifpic { position: absolute; inset: 0; background: #fff; }
+.gifpic img, .tile .gifpic img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
 .demo-cap { position: absolute; left: 16px; right: 16px; bottom: 76px; z-index: 2; font-weight: 600; font-size: 15px; line-height: 1.3; text-shadow: 0 1px 8px #000; }
 .demo-rep { position: absolute; top: 18px; right: 16px; z-index: 2; background: var(--lime); color: #000; font-weight: 800; font-size: 13px; padding: 7px 12px; border-radius: 999px; }
 .anim-ctl { display: flex; align-items: center; gap: 10px; margin: 0 0 16px; padding: 8px; border-radius: 999px; background: rgba(20,20,20,.88); backdrop-filter: blur(12px); }

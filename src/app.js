@@ -97,19 +97,21 @@ const norm = (s) => String(s).toLowerCase().replace(/ё/g, "е").replace(/[^a-z�
 const codes = (s) => [...s].map((c) => c.charCodeAt(0) - 97);
 const EMO = { chest: "💪", back: "🧗", legs: "🦵", glutes: "🍑", shoulders: "🏋️", arms: "💪", core: "🔥", cardio: "⚡" };
 // картинка упражнения: фото из базы или заглушка с эмодзи, если фото нет
-const pic = (e, w) => e.photo ? img(e.photo, w, e.name) : `<div class="ph">${EMO[e.group] || "🏋️"}</div>`;
-const DB = DB_RAW.map(([slug, name, en, pm, sm, eq, level, cat, comp, steps, nimg]) => {
+const pic = (e, w) => e.photo ? img(e.photo, w, e.name) : e.gif ? `<div class="gifpic"><img src="${e.gif}" alt="${esc(e.name)}" loading="lazy" onerror="this.remove()"></div>` : `<div class="ph">${EMO[e.group] || "🏋️"}</div>`;
+// GIF-анимации ExerciseDB v1
+const GIF_URL = (id) => (id ? `https://static.exercisedb.dev/media/${id}.gif` : null);
+const DB = DB_RAW.map(([slug, name, en, pm, sm, eq, level, cat, comp, steps, nimg, gif]) => {
   const prim = codes(pm), sec = codes(sm), url = DB_IMG + encodeURIComponent(slug) + "/";
   return { id: "db:" + slug, db: true, name, en, prim, sec, level, cat, compound: !!comp,
     group: cat === 6 ? "cardio" : MUSCLE_GROUP[prim.length ? prim[0] : 10],
     eq: eq ? eq.split(",") : [], unit: cat === 1 || /^(планка|удержание|вис |статич)/i.test(name) ? "s" : "r",
-    steps: steps.split(" / "), photo: nimg ? url + "0.jpg" : null, photos: Array.from({ length: nimg }, (_, k) => `${url}${k}.jpg`) };
+    steps: steps.split(" / "), photo: nimg ? url + "0.jpg" : null, photos: Array.from({ length: nimg }, (_, k) => `${url}${k}.jpg`), gif: GIF_URL(gif) };
 });
 // кураторские упражнения тоже участвуют в поиске; мышцы для них берём из группы
 const GROUP_MUSCLES = { chest: [0], back: [1, 2], legs: [11], glutes: [13], shoulders: [5], arms: [7, 8], core: [10], cardio: [] };
 const GROUP_SEC = { back: [3, 4], legs: [12, 13], glutes: [12, 16], arms: [9] };
 const DB_BY_SLUG = new Map(DB.map((d) => [d.id.slice(3), d]));
-EXERCISES.forEach((e) => { const d = DB_BY_SLUG.get(CURATED_PIC[e.id]); e.photo = d ? d.photo : null; e.photos = d ? d.photos : []; e.prim = GROUP_MUSCLES[e.group]; e.sec = GROUP_SEC[e.group] || []; e.cat = e.group === "cardio" ? 6 : 0; });
+EXERCISES.forEach((e) => { const d = DB_BY_SLUG.get(CURATED_PIC[e.id]); e.photo = d ? d.photo : null; e.photos = d ? d.photos : []; e.gif = (d && d.gif) || GIF_URL(CURATED_GIF[e.id]); e.prim = GROUP_MUSCLES[e.group]; e.sec = GROUP_SEC[e.group] || []; e.cat = e.group === "cardio" ? 6 : 0; });
 const CURATED_NAMES = new Set(EXERCISES.map((e) => norm(e.name)));
 const ALL = [...EXERCISES, ...DB.filter((e) => !CURATED_NAMES.has(norm(e.name)))];
 ALL.forEach((e) => { e._n = norm(e.name + " " + (e.en || "")); e._t = norm(e.steps.join(" ")); });
@@ -313,7 +315,7 @@ function pop() { state.stack.pop(); render(); window.scrollTo(0, 0); }
 $tabbar.addEventListener("click", (e) => { const b = e.target.closest("button"); if (!b) return; haptic(); go(b.dataset.tab); });
 if (tg) tg.BackButton.onClick(() => { haptic(); if (state.ob && state.obStep > 0) { state.obStep--; render(); } else if (state.ob && state.obReturn) { state.ob = null; render(); } else pop(); });
 
-const APP_VERSION = "3.7.1";
+const APP_VERSION = "3.8";
 let sessionClock = null;
 function render() {
   if (state.tab !== "timer") stopTicker();
@@ -578,13 +580,13 @@ function viewExercise(v) {
       ${e.sec.length ? `<div class="pr"><div>Помогают</div><b style="font-size:15px;text-align:right;font-weight:500">${e.sec.map((m) => MUSCLE_RU[m]).join(", ")}</b></div>` : ""}</div></div>` : "";
   const demo = demoPlan(e);
   return `
-  <div class="detail-hero"><div class="anim" id="anim">${e.photos.length > 1 ? e.photos.map((u, k) => `<img class="f${k}" src="${u}" alt="${esc(e.name)}">`).join("") : pic(e, 900)}
+  <div class="detail-hero"><div class="anim" id="anim">${e.gif ? `<div class="gifbox"><img class="gif" src="${e.gif}" alt="${esc(e.name)}"><canvas class="gifc"></canvas></div>` : e.photos.length > 1 ? e.photos.map((u, k) => `<img class="f${k}" src="${u}" alt="${esc(e.name)}">`).join("") : pic(e, 900)}
     <div class="demo-cap" id="demo-cap"></div><div class="demo-rep" id="demo-rep"></div></div><button class="back" data-back>‹ Назад</button></div>
 
   <div class="detail-body">
   <div class="anim-ctl"><button class="play" data-anim="toggle" aria-label="Пауза">❚❚</button>
     <input type="range" min="0" max="${demo.dur * 10}" value="0" id="anim-r" aria-label="Демонстрация"><span class="lbl" id="demo-t">0:00 / ${fmt(demo.dur)}</span>
-    <button class="spd" data-anim="speed">1×</button></div>
+    ${e.gif ? "" : `<button class="spd" data-anim="speed">1×</button>`}</div>
     <span class="tag">${GROUPS[e.group].name}</span>${e.db ? ` <span class="tag ghost">${CAT_RU[e.cat]}</span>` : ""}
     <div class="h1" style="margin-top:12px;font-size:32px">${e.name}</div>
     ${e.en ? `<div class="muted" style="margin-top:6px;font-size:13px">${esc(e.en)}</div>` : ""}
@@ -621,6 +623,7 @@ let demoRaf = 0;
 function startDemo(an) {
   cancelAnimationFrame(demoRaf);
   const top = state.stack[state.stack.length - 1], e = exById(top.id), plan = demoPlan(e);
+  const gif = an.querySelector("img.gif"), gc = an.querySelector("canvas.gifc");
   const f1 = an.querySelector(".f1"), ph = an.querySelector(".ph"), cap = document.getElementById("demo-cap"), rep = document.getElementById("demo-rep");
   const ar = document.getElementById("anim-r"), tl = document.getElementById("demo-t"), btn = $app.querySelector("[data-anim=toggle]"), spd = $app.querySelector("[data-anim=speed]");
   const st = { t: 0, playing: true, speed: 1, last: performance.now() };
@@ -635,7 +638,13 @@ function startDemo(an) {
     rep.textContent = plan.hold ? (t < plan.dur ? `Держи · ${Math.ceil(plan.dur - t)} с` : "Готово") : `Повтор ${Math.min(plan.reps, Math.floor(t / plan.period) + 1)} / ${plan.reps}`;
     ar.value = Math.round(t * 10); tl.textContent = `${fmt(Math.floor(t))} / ${fmt(plan.dur)}`;
   };
-  const setPlaying = (v) => { st.playing = v; if (v && st.t >= plan.dur) st.t = 0; st.last = performance.now(); btn.textContent = v ? "❚❚" : "▶"; };
+  // GIF нельзя поставить на паузу: на паузе показываем текущий кадр на canvas
+  const freeze = (v) => {
+    if (!gif || !gc) return;
+    if (v && gif.complete && gif.naturalWidth) { gc.width = gif.naturalWidth; gc.height = gif.naturalHeight; try { gc.getContext("2d").drawImage(gif, 0, 0); } catch (err) {} gc.style.display = "block"; gif.style.visibility = "hidden"; }
+    else { gc.style.display = "none"; gif.style.visibility = "visible"; }
+  };
+  const setPlaying = (v) => { st.playing = v; if (v && st.t >= plan.dur) st.t = 0; st.last = performance.now(); btn.textContent = v ? "❚❚" : "▶"; freeze(!v); };
   const loop = (now) => {
     if (!an.isConnected) return;
     if (st.playing) { st.t += ((now - st.last) / 1000) * st.speed; if (st.t >= plan.dur) { st.t = plan.dur; setPlaying(false); btn.textContent = "↻"; } }
@@ -643,7 +652,7 @@ function startDemo(an) {
   };
   btn.onclick = () => { haptic(); setPlaying(!st.playing); };
   an.onclick = () => { haptic(); setPlaying(!st.playing); };
-  spd.onclick = () => { haptic(); const sp = { "1×": "0.5×", "0.5×": "2×", "2×": "1×" }[spd.textContent]; spd.textContent = sp; st.speed = parseFloat(sp); };
+  if (spd) spd.onclick = () => { haptic(); const sp = { "1×": "0.5×", "0.5×": "2×", "2×": "1×" }[spd.textContent]; spd.textContent = sp; st.speed = parseFloat(sp); };
   ar.oninput = () => { st.t = +ar.value / 10; setPlaying(false); paint(); };
   paint(); demoRaf = requestAnimationFrame(loop);
 }
