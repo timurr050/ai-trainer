@@ -309,31 +309,49 @@ function swapItem(w, idx) {
 // ===================== НАВИГАЦИЯ =====================
 const state = { tab: "coach", stack: [], ob: null, obStep: 0, obReturn: false, group: "all", query: "", limit: 40, onlyMine: true, liftEx: null, builder: new Set() };
 
-function go(tab) { state.tab = tab; state.stack = []; render(); window.scrollTo(0, 0); }
+function go(tab) { rootCache = null; navAnim = state.tab === tab && !state.stack.length ? "" : "tab"; state.tab = tab; state.stack = []; render(); window.scrollTo(0, 0); }
 // при переходе внутрь запоминаем, где был экран, и возвращаемся туда же по «Назад»
 const scrollMem = {};
 const scrollKey = () => (state.stack.length ? "s" + state.stack.length : "t:" + state.tab);
-function push(v) { scrollMem[scrollKey()] = window.scrollY; state.stack.push(v); render(); window.scrollTo(0, 0); }
-function pop() { state.stack.pop(); render(); const y = scrollMem[scrollKey()] || 0; delete scrollMem[scrollKey()]; window.scrollTo(0, y); requestAnimationFrame(() => window.scrollTo(0, y)); }
+// анимация перехода: вперёд экран выезжает справа, назад слева, вкладки плавно проявляются
+let navAnim = "";
+// список упражнений не перерисовываем при возврате: сохраняем готовые элементы, чтобы картинки не мигали
+let rootCache = null;
+const cacheKey = () => JSON.stringify([store.basket, state.query, state.group, state.onlyMine, state.limit, store.profile && store.profile.eq]);
+function push(v) {
+  scrollMem[scrollKey()] = window.scrollY;
+  rootCache = !state.stack.length && state.tab === "catalog" ? { tab: state.tab, nodes: [...$app.childNodes], key: cacheKey() } : rootCache;
+  state.stack.push(v); navAnim = "fwd"; render(); window.scrollTo(0, 0);
+}
+function pop() { state.stack.pop(); navAnim = "back"; render(); const y = scrollMem[scrollKey()] || 0; delete scrollMem[scrollKey()]; window.scrollTo(0, y); requestAnimationFrame(() => window.scrollTo(0, y)); }
 $tabbar.addEventListener("click", (e) => { const b = e.target.closest("button"); if (!b) return; haptic(); go(b.dataset.tab); });
 if (tg) tg.BackButton.onClick(() => { haptic(); if (state.ob && state.obStep > 0) { state.obStep--; render(); } else if (state.ob && state.obReturn) { state.ob = null; render(); } else pop(); });
 
-const APP_VERSION = "3.8.1";
+const APP_VERSION = "3.8.2";
 let sessionClock = null;
 function render() {
   if (state.tab !== "timer") stopTicker();
   clearInterval(sessionClock); sessionClock = null;
   const top = state.stack[state.stack.length - 1];
-  let html;
+  let html = "";
   const onboarding = !store.profile || state.ob;
-  if (adm.flag.banned) html = viewBanned();
+  const reuse = !onboarding && !top && !adm.flag.banned && rootCache && rootCache.tab === state.tab && rootCache.key === cacheKey() ? rootCache : null;
+  if (!state.stack.length) rootCache = null;
+  if (reuse) {}
+  else if (adm.flag.banned) html = viewBanned();
   else if (onboarding) html = viewOnboarding();
   else if (top) html = ({ preview: viewPreview, session: viewSession, exercise: viewExercise, settings: viewSettings, builder: viewBuilder, run: viewRunDetail, admin: viewAdmin, admin_user: viewAdminUser })[top.type](top);
   else html = { coach: viewCoach, catalog: viewCatalog, run: viewRun, timer: viewTimer, history: viewHistory, progress: viewProgress }[state.tab]();
   killMap();
-  const bar = !onboarding && (!top ? state.tab === "catalog" : top.type === "exercise") ? basketBar() : "";
-  const ver = adm.flag.banned ? "" : `<div class="muted" style="font-size:12px;margin:18px 0 0;text-align:center">Версия ${APP_VERSION}</div>`;
-  $app.innerHTML = `<div class="screen">${html}${ver}</div>${bar}`;
+  if (reuse) $app.replaceChildren(...reuse.nodes);
+  else {
+    const bar = !onboarding && (!top ? state.tab === "catalog" : top.type === "exercise") ? basketBar() : "";
+    const ver = adm.flag.banned ? "" : `<div class="muted" style="font-size:12px;margin:18px 0 0;text-align:center">Версия ${APP_VERSION}</div>`;
+    $app.innerHTML = `<div class="screen">${html}${ver}</div>${bar}`;
+  }
+  const scr = $app.querySelector(".screen");
+  if (scr) { scr.classList.remove("nav-fwd", "nav-back", "nav-tab"); if (navAnim) { void scr.offsetWidth; scr.classList.add("nav-" + navAnim); } }
+  navAnim = "";
   const hideTabs = adm.flag.banned || onboarding || (top && top.type === "session");
   $tabbar.classList.toggle("hidden", !!hideTabs);
   $tabbar.querySelectorAll("button").forEach((b) => b.classList.toggle("active", b.dataset.tab === state.tab));
