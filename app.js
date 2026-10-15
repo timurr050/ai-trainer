@@ -520,12 +520,15 @@ function swapItem(w, idx) {
 const state = { tab: "coach", stack: [], ob: null, obStep: 0, obReturn: false, group: "all", query: "", limit: 40, onlyMine: true, liftEx: null, builder: new Set() };
 
 function go(tab) { state.tab = tab; state.stack = []; render(); window.scrollTo(0, 0); }
-function push(v) { state.stack.push(v); render(); window.scrollTo(0, 0); }
-function pop() { state.stack.pop(); render(); window.scrollTo(0, 0); }
+// при переходе внутрь запоминаем, где был экран, и возвращаемся туда же по «Назад»
+const scrollMem = {};
+const scrollKey = () => (state.stack.length ? "s" + state.stack.length : "t:" + state.tab);
+function push(v) { scrollMem[scrollKey()] = window.scrollY; state.stack.push(v); render(); window.scrollTo(0, 0); }
+function pop() { state.stack.pop(); render(); const y = scrollMem[scrollKey()] || 0; delete scrollMem[scrollKey()]; window.scrollTo(0, y); requestAnimationFrame(() => window.scrollTo(0, y)); }
 $tabbar.addEventListener("click", (e) => { const b = e.target.closest("button"); if (!b) return; haptic(); go(b.dataset.tab); });
 if (tg) tg.BackButton.onClick(() => { haptic(); if (state.ob && state.obStep > 0) { state.obStep--; render(); } else if (state.ob && state.obReturn) { state.ob = null; render(); } else pop(); });
 
-const APP_VERSION = "3.8";
+const APP_VERSION = "3.8.1";
 let sessionClock = null;
 function render() {
   if (state.tab !== "timer") stopTicker();
