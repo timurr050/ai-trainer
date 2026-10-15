@@ -941,10 +941,10 @@ function viewOnboarding() {
 }
 function finishOnboarding() {
   const o = state.ob;
-  store.profile = { place: o.place, eq: o.eq, goal: o.goal, level: o.level, days: o.days, minutes: o.minutes };
+  store.profile = { ...(store.profile || {}), place: o.place, eq: o.eq, goal: o.goal, level: o.level, days: o.days, minutes: o.minutes, v3: 1 };
   store.shuffle = {};
   state.ob = null; state.obStep = 0;
-  save(); notify();
+  save(); notify(); syncRemind();
   if (state.obReturn) { state.obReturn = false; render(); toast("Настройки сохранены"); }
   else { go("coach"); toast("План готов 💪"); }
 }
@@ -1205,6 +1205,38 @@ function startDemo(an) {
   paint(); demoRaf = requestAnimationFrame(loop);
 }
 
+// ===================== НАПОМИНАНИЯ В ЧАТЕ =====================
+// Сервер напоминаний: worker/reminders.js на Cloudflare Workers. Пока адреса нет, блок показывает, что функция скоро.
+const REMIND_URL = "";
+const remindCfg = () => ({ on: false, before: true, dayOf: true, beforeAt: "20:00", dayOfAt: "09:00", ...((store.profile && store.profile.remind) || {}) });
+function syncRemind(extra = {}) {
+  const p = store.profile, r = remindCfg();
+  if (!REMIND_URL || !p || !tg || !tg.initData || (!r.on && !extra.force)) return Promise.resolve(null);
+  const days = weekPlan(p).map((d) => (d ? d.title : null));
+  let tz = "Europe/Moscow"; try { tz = Intl.DateTimeFormat().resolvedOptions().timeZone || tz; } catch (e) {}
+  return fetch(REMIND_URL, { method: "POST", headers: { "Content-Type": "text/plain" }, body: JSON.stringify({ initData: tg.initData, ...r, days, tz, minutes: p.minutes, ...extra }) })
+    .then((x) => x.json()).catch(() => null);
+}
+function remindBlock() {
+  const r = remindCfg(), ready = !!REMIND_URL && !!(tg && tg.initData);
+  const times = (key, list) => list.map((t) => `<button class="chip ${r[key] === t ? "active" : ""}" data-rtime="${key}:${t}" style="height:32px;padding:0 12px;font-size:13px">${t}</button>`).join("");
+  return `<div class="section"><div class="section-head"><div class="h2">Напоминания</div></div>
+  <div class="card">
+    <div class="pr"><div><b>Писать мне в чат с ботом</b><div class="muted" style="font-size:12px;margin-top:4px">${ready ? "Накануне тренировки и в её день" : "Скоро: подключаем сервер напоминаний"}</div></div>
+      <button class="toggle ${r.on ? "on" : ""}" data-remind="on" ${ready ? "" : 'style="opacity:.4;pointer-events:none"'} aria-label="Напоминания"><i></i></button></div>
+    ${r.on ? `
+    <div class="pr" style="display:block"><div style="display:flex;justify-content:space-between;align-items:center"><span>Накануне вечером</span><button class="toggle ${r.before ? "on" : ""}" data-remind="before"><i></i></button></div>
+      ${r.before ? `<div class="chips" style="margin:10px 0 0;padding:0">${times("beforeAt", ["19:00", "20:00", "21:00", "22:00"])}</div>` : ""}</div>
+    <div class="pr" style="display:block"><div style="display:flex;justify-content:space-between;align-items:center"><span>В день тренировки</span><button class="toggle ${r.dayOf ? "on" : ""}" data-remind="dayOf"><i></i></button></div>
+      ${r.dayOf ? `<div class="chips" style="margin:10px 0 0;padding:0">${times("dayOfAt", ["07:00", "09:00", "12:00", "17:00"])}</div>` : ""}</div>
+    <div class="pr"><div class="muted" style="font-size:13px">Дни берутся из твоего плана</div><button class="swap" data-remind-test>Проверить</button></div>` : ""}
+  </div></div>`;
+}
+function setRemind(patch) {
+  store.profile.remind = { ...remindCfg(), ...patch }; save(); render();
+  syncRemind({ force: true }).then((res) => { if (res && !res.ok) toast("Не получилось сохранить напоминания"); });
+}
+
 // ===================== НАСТРОЙКИ =====================
 function viewSettings() {
   const p = store.profile;
@@ -1219,6 +1251,7 @@ function viewSettings() {
   <div class="top"><div><button class="back" data-back style="background:var(--surface)">‹ Назад</button><div class="h1" style="margin-top:16px">Профиль</div></div></div>
   <div class="list">${rows.map(([k, v, step]) => `<button class="row" data-edit="${step}" style="padding:16px"><div class="grow"><div class="sub" style="margin:0 0 4px">${k}</div><div class="title" style="font-size:15px">${esc(v)}</div></div><span class="swap">Изменить</span></button>`).join("")}</div>
   <div class="coach" style="margin-top:16px"><div class="ava">AI</div><p>Когда меняешь инвентарь или цель, я сразу пересобираю план и все тренировки.</p></div>
+  ${remindBlock()}
   <button class="danger-link" data-reset>Сбросить все данные</button>`;
 }
 
@@ -1429,6 +1462,12 @@ function bind() {
     store.basket = b.includes(id) ? b.filter((x) => x !== id) : [...b, id]; save(); notify(); render(); });
   const an = document.getElementById("anim");
   if (an) startDemo(an);
+  // напоминания
+  on("[data-remind]", (el) => { const k = el.dataset.remind, r = remindCfg();
+    if (k === "on" && !r.on && tg && tg.requestWriteAccess) { try { tg.requestWriteAccess((ok) => { if (ok) { setRemind({ on: true }); toast("Буду напоминать 🔔"); } else toast("Без разрешения бот не сможет писать"); }); return; } catch (e) {} }
+    setRemind({ [k]: !r[k] }); });
+  on("[data-rtime]", (el) => { const [k, t] = el.dataset.rtime.split(/:(.+)/); setRemind({ [k]: t }); });
+  on("[data-remind-test]", () => syncRemind({ action: "test" }).then((res) => toast(res && res.ok ? "Отправил тестовое сообщение в чат" : "Не получилось, проверь, что бот не заблокирован")));
   // бег
   on("[data-run]", (el) => { const a = el.dataset.run;
     if (a === "start") { if (geo.err === "denied") { toast("Нужен доступ к геопозиции"); return; } runStart(); }
@@ -1755,6 +1794,8 @@ function renderRunBar() {
 setInterval(() => { if (store.run) paintRun(); }, 1000);
 if (store.run) { geoStart(); state.tab = "run"; }
 
+// раз в день обновляем расписание на сервере напоминаний (план мог поменяться)
+try { const today = new Date().toDateString(); if (remindCfg().on && localStorage.getItem("remind_sync") !== today) { syncRemind(); localStorage.setItem("remind_sync", today); } } catch (e) {}
 
 render();
 cloudLoad();

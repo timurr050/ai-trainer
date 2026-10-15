@@ -1,0 +1,16 @@
+# Сервер напоминаний (Cloudflare Workers)
+
+Бот пишет пользователю в чат накануне тренировки (по умолчанию в 20:00) и в день тренировки (в 09:00) по его часовому поясу. Дни и названия тренировок берутся из плана в мини-приложении. Бесплатного тарифа Cloudflare хватает.
+
+## Установка через сайт Cloudflare
+1. Зарегистрируйтесь на https://dash.cloudflare.com.
+2. Storage & Databases → KV → Create: имя `REMINDERS`.
+3. Compute (Workers) → Create → Hello World → Deploy. Затем Edit code, замените весь код содержимым `reminders.js` и нажмите Deploy.
+4. В воркере: Settings → Bindings → Add → KV namespace, имя переменной `REMINDERS`, выберите созданное пространство.
+5. Settings → Variables and Secrets:
+   - `BOT_TOKEN`, тип Secret: токен бота из @BotFather;
+   - `APP_URL`, тип Text: `https://timurr050.github.io/ai-trainer/`.
+6. Settings → Trigger events → Add → Cron: `*/15 * * * *`.
+7. Скопируйте адрес воркера (`https://….workers.dev`) и впишите его в `REMIND_URL` в `src/app.js`, затем `python3 src/build.py`.
+
+Проверка подписи Telegram (initData) не даёт чужим людям менять чужие напоминания.
