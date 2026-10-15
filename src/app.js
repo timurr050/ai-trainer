@@ -94,17 +94,21 @@ const MUSCLE_GROUP = ["chest", "back", "back", "back", "back", "shoulders", "sho
 const CAT_RU = ["Силовое", "Растяжка", "Плиометрика", "Пауэрлифтинг", "Тяжёлая атлетика", "Стронгмен", "Кардио"];
 const norm = (s) => String(s).toLowerCase().replace(/ё/g, "е").replace(/[^a-zа-я0-9 ]+/g, " ").replace(/\s+/g, " ").trim();
 const codes = (s) => [...s].map((c) => c.charCodeAt(0) - 97);
+const EMO = { chest: "💪", back: "🧗", legs: "🦵", glutes: "🍑", shoulders: "🏋️", arms: "💪", core: "🔥", cardio: "⚡" };
+// картинка упражнения: фото из базы или заглушка с эмодзи, если фото нет
+const pic = (e, w) => e.photo ? img(e.photo, w, e.name) : `<div class="ph">${EMO[e.group] || "🏋️"}</div>`;
 const DB = DB_RAW.map(([slug, name, en, pm, sm, eq, level, cat, comp, steps, nimg]) => {
   const prim = codes(pm), sec = codes(sm), url = DB_IMG + encodeURIComponent(slug) + "/";
   return { id: "db:" + slug, db: true, name, en, prim, sec, level, cat, compound: !!comp,
     group: cat === 6 ? "cardio" : MUSCLE_GROUP[prim.length ? prim[0] : 10],
     eq: eq ? eq.split(",") : [], unit: cat === 1 || /^(планка|удержание|вис |статич)/i.test(name) ? "s" : "r",
-    steps: steps.split(" / "), photo: url + "0.jpg", photos: Array.from({ length: nimg }, (_, k) => `${url}${k}.jpg`) };
+    steps: steps.split(" / "), photo: nimg ? url + "0.jpg" : null, photos: Array.from({ length: nimg }, (_, k) => `${url}${k}.jpg`) };
 });
 // кураторские упражнения тоже участвуют в поиске; мышцы для них берём из группы
 const GROUP_MUSCLES = { chest: [0], back: [1, 2], legs: [11], glutes: [13], shoulders: [5], arms: [7, 8], core: [10], cardio: [] };
 const GROUP_SEC = { back: [3, 4], legs: [12, 13], glutes: [12, 16], arms: [9] };
-EXERCISES.forEach((e) => { e.prim = GROUP_MUSCLES[e.group]; e.sec = GROUP_SEC[e.group] || []; e.cat = e.group === "cardio" ? 6 : 0; });
+const DB_BY_SLUG = new Map(DB.map((d) => [d.id.slice(3), d]));
+EXERCISES.forEach((e) => { const d = DB_BY_SLUG.get(CURATED_PIC[e.id]); e.photo = d ? d.photo : null; e.photos = d ? d.photos : []; e.prim = GROUP_MUSCLES[e.group]; e.sec = GROUP_SEC[e.group] || []; e.cat = e.group === "cardio" ? 6 : 0; });
 const CURATED_NAMES = new Set(EXERCISES.map((e) => norm(e.name)));
 const ALL = [...EXERCISES, ...DB.filter((e) => !CURATED_NAMES.has(norm(e.name)))];
 ALL.forEach((e) => { e._n = norm(e.name + " " + (e.en || "")); e._t = norm(e.steps.join(" ")); });
@@ -472,7 +476,7 @@ function viewPreview(v) {
     <div class="coach"><div class="ava">AI</div><p>${v.basket ? "Собрал из твоей подборки, подходы и повторы подстроил под твою цель." : coachLine(w, p)} Отдых между подходами ${w.items[0] ? w.items[0].rest : 60} с.</p></div>
     <div class="section"><div class="section-head"><div class="h2">Упражнения</div>${v.day != null ? `<button class="swap" data-reshuffle>🔄 Другие</button>` : ""}</div>
       <div class="list">${w.items.map((it, i) => { const e = exById(it.id); return `
-        <div class="row"><button class="thumb" data-ex="${e.id}">${img(e.photo, 200)}</button>
+        <div class="row"><button class="thumb" data-ex="${e.id}">${pic(e, 200)}</button>
           <button class="grow" style="text-align:left" data-ex="${e.id}"><div class="title">${e.name}</div><div class="sub">${GROUPS[e.group].name} · ${it.sets} × ${it.reps}${it.unit === "s" ? " с" : ""}</div></button>
           ${v.basket ? `<button class="swap" data-unbasket="${i}">Убрать</button>` : `<button class="swap" data-swap="${i}">Заменить</button>`}</div>`; }).join("") ||
         `<div class="empty"><div class="big">🤷</div><b>Не из чего собрать</b><p>Добавь инвентарь в настройках, и я подберу упражнения.</p></div>`}</div></div>
@@ -512,7 +516,7 @@ function viewSession() {
     <div class="tr" style="height:8px;border-radius:6px;background:var(--surface-2);margin-top:10px;overflow:hidden"><i style="display:block;height:100%;width:${(done / total) * 100}%;background:var(--lime)"></i></div></div>
   <div class="list section" style="margin-top:12px">${s.items.map((it, i) => { const e = exById(it.id); const all = it.done.every(Boolean); return `
     <div class="ex-card ${all ? "done" : ""}">
-      <div class="ex-head"><button class="thumb" data-ex="${e.id}">${img(e.photo, 200)}</button>
+      <div class="ex-head"><button class="thumb" data-ex="${e.id}">${pic(e, 200)}</button>
         <div class="grow"><div class="title">${e.name}</div><div class="sub">${it.sets} × ${it.reps}${it.unit === "s" ? " с" : ""} · отдых ${it.rest} с</div></div></div>
       <div class="sets">${it.done.map((d, j) => `<button class="set ${d ? "on" : ""}" data-set="${i}:${j}">${d ? "✓" : j + 1}</button>`).join("")}
         ${isWeighted(e) ? `<input class="w-input" inputmode="decimal" placeholder="кг" value="${esc(it.w)}" data-w="${i}">` : ""}</div>
@@ -545,7 +549,7 @@ function viewCatalog() {
   <div class="seg" style="grid-template-columns:1fr 1fr;margin-bottom:12px"><button data-mine="1" class="${state.onlyMine ? "active" : ""}">Мой инвентарь</button><button data-mine="0" class="${state.onlyMine ? "" : "active"}">Все</button></div>
   <div class="chips"><button class="chip ${state.group === "all" ? "active" : ""}" data-group="all">Все</button>${Object.entries(GROUPS).map(([id, g]) => `<button class="chip ${id === state.group ? "active" : ""}" data-group="${id}">${g.name}</button>`).join("")}</div>
   <div class="grid section" style="margin-top:16px">${shown.map((e) => `
-    <button class="tile${e.db ? " tile-db" : ""}" data-ex="${e.id}">${img(e.photo, 500, e.name)}${store.basket.includes(e.id) ? `<span class="in-basket">✓</span>` : ""}
+    <button class="tile${e.db ? " tile-db" : ""}" data-ex="${e.id}">${pic(e, 500)}${store.basket.includes(e.id) ? `<span class="in-basket">✓</span>` : ""}
       <div class="cap"><span>${GROUPS[e.group].name}${e.eq.length ? "" : " · свой вес"}</span><b>${e.name}</b></div></button>`).join("") || `<div class="muted">Ничего не найдено</div>`}</div>
   ${n > shown.length ? `<div class="section"><button class="btn dark block" data-more>Показать ещё (${n - shown.length})</button></div>` : ""}
   <div class="muted" style="font-size:12px;margin:18px 0 0;text-align:center">База упражнений: free-exercise-db (общественное достояние)</div>`;
@@ -567,10 +571,14 @@ function viewExercise(v) {
   const mus = e.db ? `<div class="section"><div class="section-head"><div class="h2">Мышцы</div></div><div class="card">
       <div class="pr"><div>Основные</div><b style="font-size:15px;text-align:right">${e.prim.map((m) => MUSCLE_RU[m]).join(", ") || "—"}</b></div>
       ${e.sec.length ? `<div class="pr"><div>Помогают</div><b style="font-size:15px;text-align:right;font-weight:500">${e.sec.map((m) => MUSCLE_RU[m]).join(", ")}</b></div>` : ""}</div></div>` : "";
-  const pics = e.db && e.photos.length > 1 ? `<div class="section"><div class="section-head"><div class="h2">Как выглядит</div></div><div class="pics">${e.photos.map((u, k) => `<figure>${img(u, 500, e.name)}<figcaption>${k ? "Финиш" : "Старт"}</figcaption></figure>`).join("")}</div></div>` : "";
+  const anim = e.photos.length > 1;
   return `
-  <div class="detail-hero${e.db ? " hero-db" : ""}">${img(e.photo, 900, e.name)}<button class="back" data-back>‹ Назад</button></div>
+  <div class="detail-hero">${anim ? `<div class="anim playing" id="anim">${e.photos.map((u, k) => `<img class="f${k}" src="${u}" alt="${esc(e.name)}">`).join("")}</div>` : pic(e, 900)}<button class="back" data-back>‹ Назад</button></div>
+
   <div class="detail-body">
+  ${anim ? `<div class="anim-ctl"><button class="play" data-anim="toggle" aria-label="Пауза">❚❚</button>
+    <span class="lbl">Старт</span><input type="range" min="0" max="100" value="0" id="anim-r" aria-label="Фаза движения"><span class="lbl">Финиш</span>
+    <button class="spd" data-anim="speed">1×</button></div>` : ""}
     <span class="tag">${GROUPS[e.group].name}</span>${e.db ? ` <span class="tag ghost">${CAT_RU[e.cat]}</span>` : ""}
     <div class="h1" style="margin-top:12px;font-size:32px">${e.name}</div>
     ${e.en ? `<div class="muted" style="margin-top:6px;font-size:13px">${esc(e.en)}</div>` : ""}
@@ -581,7 +589,7 @@ function viewExercise(v) {
     <div class="section"><button class="btn block ${inB ? "dark" : ""}" data-basket="${esc(e.id)}">${inB ? "✓ В моей тренировке · убрать" : "+ Добавить в мою тренировку"}</button></div>
     <div class="section"><div class="section-head"><div class="h2">Техника</div></div><ol class="steps">${e.steps.map((s) => `<li>${s}</li>`).join("")}</ol>
       ${e.en ? `<button class="swap" style="margin-top:12px" data-video="${esc(e.en)}">▶ Видео техники на YouTube</button>` : ""}</div>
-    ${pics}${mus}
+    ${mus}
     <div class="section"><div class="section-head"><div class="h2">Инвентарь</div></div>
       <div class="card">${reqs.length ? reqs.join("") : `<div class="pr"><div>Без инвентаря, свой вес</div><b class="lime" style="font-size:15px">✓</b></div>`}${e.where === "outdoor" ? `<div class="pr"><div>Только на улице</div><b style="font-size:15px">🌳</b></div>` : ""}</div></div>
   </div>`;
@@ -798,6 +806,17 @@ function bind() {
   on("[data-more]", () => { const y = window.scrollY; state.limit += 40; render(); window.scrollTo(0, y); });
   on("[data-basket]", (el) => { const id = el.dataset.basket, b = store.basket;
     store.basket = b.includes(id) ? b.filter((x) => x !== id) : [...b, id]; save(); notify(); render(); });
+  const an = document.getElementById("anim"), ar = document.getElementById("anim-r");
+  if (an) {
+    const setPhase = (v) => { an.style.setProperty("--ph", v / 100); };
+    on("[data-anim=toggle]", (el) => { const play = !an.classList.contains("playing"); an.classList.toggle("playing", play); el.textContent = play ? "❚❚" : "▶"; if (!play) setPhase(+ar.value); });
+    on("[data-anim=speed]", (el) => { const sp = { "1×": "0.5×", "0.5×": "2×", "2×": "1×" }[el.textContent]; el.textContent = sp; an.style.setProperty("--dur", (2.4 / parseFloat(sp)) + "s"); });
+    ar.oninput = () => { an.classList.remove("playing"); $app.querySelector("[data-anim=toggle]").textContent = "▶"; setPhase(+ar.value); };
+    const f1 = an.querySelector(".f1");
+    const sync = () => { if (!an.isConnected) return; if (an.classList.contains("playing")) ar.value = Math.round(+getComputedStyle(f1).opacity * 100); requestAnimationFrame(sync); };
+    requestAnimationFrame(sync);
+    an.onclick = () => { const play = !an.classList.contains("playing"); an.classList.toggle("playing", play); $app.querySelector("[data-anim=toggle]").textContent = play ? "❚❚" : "▶"; if (!play) { ar.value = +getComputedStyle(an.querySelector(".f1")).opacity > 0.5 ? 100 : 0; setPhase(+ar.value); } };
+  }
   on("[data-unbasket]", (el) => { const v = state.stack[state.stack.length - 1], it = v.w.items.splice(+el.dataset.unbasket, 1)[0];
     store.basket = store.basket.filter((x) => x !== it.id); save(); render(); });
   on("[data-basket-go]", () => push({ type: "preview", w: basketWorkout(), basket: true }));
