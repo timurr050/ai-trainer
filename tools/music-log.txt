@@ -1,0 +1,7 @@
+ok|volatile-reaction|Volatile Reaction|165|2316204
+fail|xhilarate|xhilarate
+ok|raving-energy|Raving Energy|267|3747605
+fail|ade|ade
+ok|funk-game-loop|Funk Game Loop|56|792631
+fail|damage|Damage
+ok|killers|Killers|305|4274225
