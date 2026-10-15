@@ -22,12 +22,20 @@ for (const base of BASES) {
   const first = await get(`${base}/exercises?offset=0&limit=100`);
   if (!first || !Array.isArray(first.data)) continue;
   all = [...first.data];
-  const total = (first.metadata && first.metadata.totalExercises) || 1500;
+  const total = (first.meta && first.meta.total) || (first.metadata && first.metadata.totalExercises) || 1500;
   log.push(`base ${base}, total ${total}`);
-  for (let off = all.length; off < total; ) {
-    const p = await get(`${base}/exercises?offset=${off}&limit=100`);
-    if (!p || !Array.isArray(p.data) || !p.data.length) break;
-    all.push(...p.data); off += p.data.length;
+  let meta = first.meta || {}, guard = 0;
+  // курсорная пагинация: ?limit=25&cursor=<nextCursor>; пробуем имена параметра по очереди
+  let param = null;
+  while (meta.hasNextPage && meta.nextCursor && guard++ < 200) {
+    let p = null;
+    for (const name of param ? [param] : ["cursor", "after", "nextCursor"]) {
+      const q = await get(`${base}/exercises?limit=100&${name}=${encodeURIComponent(meta.nextCursor)}`);
+      const fresh = q && Array.isArray(q.data) && q.data.some((e) => !all.find((x) => x.exerciseId === e.exerciseId));
+      if (fresh) { p = q; param = name; break; }
+    }
+    if (!p) break;
+    all.push(...p.data); meta = p.meta || {};
     await sleep(400);
   }
   break;
