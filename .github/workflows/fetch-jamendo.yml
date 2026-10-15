@@ -17,11 +17,12 @@ jobs:
         with: { node-version: 22 }
       - run: node tools/fetch_jamendo.mjs
         env:
-          JAMENDO_CLIENT_ID: ${{ secrets.JAMENDO_CLIENT_ID }}
+          JAMENDO_CLIENT_ID: ${{ secrets.JAMENDO_CLIENT_ID || vars.JAMENDO_CLIENT_ID }}
       - uses: actions/setup-python@v5
         with: { python-version: "3.12" }
       - name: Rebuild app and commit
         run: |
+          if [ ! -s music/jamendo.json ]; then echo "Список не получен — ключ JAMENDO_CLIENT_ID не найден или API отказал"; exit 1; fi
           python3 src/build.py
           git config user.name "timurr050"
           git config user.email "13timm@gmail.com"
