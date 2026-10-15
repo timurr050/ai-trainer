@@ -23,7 +23,7 @@ const PHOTOS = {
 const PLACES = [
   { id: "home", name: "Дома", emo: "🏠", photo: PHOTOS.plank, desc: "Свой вес и домашний инвентарь", eq: ["mat"] },
   { id: "outdoor", name: "На улице", emo: "🌳", photo: PHOTOS.run, desc: "Спортплощадка, парк, пробежки", eq: ["pullup", "dips", "bench"] },
-  { id: "gym", name: "В зале", emo: "🏋️", photo: PHOTOS.gym, desc: "Штанги, гантели и тренажёры", eq: ["dumbbells", "kettlebell", "barbell", "bench", "pullup", "dips", "cable", "machines", "mat", "rope", "cardio", "bands"] },
+  { id: "gym", name: "В зале", emo: "🏋️", photo: PHOTOS.gym, desc: "Штанги, гантели и тренажёры", eq: ["dumbbells", "kettlebell", "barbell", "bench", "pullup", "dips", "cable", "machines", "mat", "rope", "cardio", "bands", "fitball", "medball", "roller", "other"] },
 ];
 
 const EQUIPMENT = [
@@ -40,6 +40,10 @@ const EQUIPMENT = [
   { id: "rope", name: "Скакалка", emo: "➰" },
   { id: "cardio", name: "Кардиотренажёр", emo: "🏃" },
   { id: "trx", name: "Петли TRX", emo: "🪢" },
+  { id: "fitball", name: "Фитбол", emo: "🔵" },
+  { id: "medball", name: "Медбол", emo: "🏐" },
+  { id: "roller", name: "Ролик для МФР", emo: "🧻" },
+  { id: "other", name: "Прочее в зале (цепи, сани, покрышки)", emo: "⛓️" },
 ];
 
 const GOALS = [

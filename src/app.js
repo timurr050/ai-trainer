@@ -14,8 +14,11 @@ const notify = (t = "success") => { try { tg && tg.HapticFeedback.notificationOc
 // ===================== ХРАНИЛИЩЕ =====================
 // localStorage на устройстве + Telegram CloudStorage, чтобы данные были на всех устройствах пользователя.
 const LS_KEY = "aicoach_v2";
-let store = { profile: null, history: [], session: null, shuffle: {} };
+let store = { profile: null, history: [], session: null, shuffle: {}, basket: [] };
 try { Object.assign(store, JSON.parse(localStorage.getItem(LS_KEY) || "{}")); } catch (e) {}
+if (!Array.isArray(store.basket)) store.basket = [];
+// v3: в зале появился новый инвентарь из полной базы упражнений
+if (store.profile && !store.profile.v3) { if (store.profile.place === "gym") store.profile.eq = [...new Set([...store.profile.eq, "fitball", "medball", "roller", "other"])]; store.profile.v3 = 1; }
 const cloud = tg && tg.CloudStorage && tg.isVersionAtLeast && tg.isVersionAtLeast("6.9") ? tg.CloudStorage : null;
 let cloudTimer = null;
 function save() {
@@ -67,8 +70,7 @@ function resetAll() {
 // ===================== УТИЛИТЫ =====================
 const $app = document.getElementById("app");
 const $tabbar = document.getElementById("tabbar");
-const exById = (id) => EXERCISES.find((e) => e.id === id);
-const img = (id, w, alt = "") => `<img src="${IMG(id, w)}" alt="${esc(alt)}" loading="lazy" onerror="this.remove()">`;
+const img = (id, w, alt = "") => `<img src="${String(id).startsWith("http") ? id : IMG(id, w)}" alt="${esc(alt)}" loading="lazy" onerror="this.remove()">`;
 const DAYS = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"];
 const MONTHS = ["январь", "февраль", "март", "апрель", "май", "июнь", "июль", "август", "сентябрь", "октябрь", "ноябрь", "декабрь"];
 const MONTHS_SHORT = ["янв", "фев", "мар", "апр", "мая", "июн", "июл", "авг", "сен", "окт", "ноя", "дек"];
@@ -84,6 +86,142 @@ const hash = (s) => { let h = 2166136261; for (const c of s) { h ^= c.charCodeAt
 const eqName = (id) => (EQUIPMENT.find((e) => e.id === id) || {}).name || id;
 const WEIGHTED = ["dumbbells", "kettlebell", "barbell", "cable", "machines"];
 const isWeighted = (ex) => ex.eq.some((r) => r.split("|").some((x) => WEIGHTED.includes(x)));
+
+// ===================== ВСЯ БАЗА: free-exercise-db на русском =====================
+const DB_IMG = "https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/exercises/";
+const MUSCLE_RU = ["Грудь", "Широчайшие", "Середина спины", "Поясница", "Трапеции", "Плечи", "Шея", "Бицепс", "Трицепс", "Предплечья", "Пресс", "Квадрицепс", "Бицепс бедра", "Ягодицы", "Икры", "Приводящие бедра", "Отводящие бедра"];
+const MUSCLE_GROUP = ["chest", "back", "back", "back", "back", "shoulders", "shoulders", "arms", "arms", "arms", "core", "legs", "legs", "glutes", "legs", "legs", "glutes"];
+const CAT_RU = ["Силовое", "Растяжка", "Плиометрика", "Пауэрлифтинг", "Тяжёлая атлетика", "Стронгмен", "Кардио"];
+const norm = (s) => String(s).toLowerCase().replace(/ё/g, "е").replace(/[^a-zа-я0-9 ]+/g, " ").replace(/\s+/g, " ").trim();
+const codes = (s) => [...s].map((c) => c.charCodeAt(0) - 97);
+const DB = DB_RAW.map(([slug, name, en, pm, sm, eq, level, cat, comp, steps, nimg]) => {
+  const prim = codes(pm), sec = codes(sm), url = DB_IMG + encodeURIComponent(slug) + "/";
+  return { id: "db:" + slug, db: true, name, en, prim, sec, level, cat, compound: !!comp,
+    group: cat === 6 ? "cardio" : MUSCLE_GROUP[prim.length ? prim[0] : 10],
+    eq: eq ? eq.split(",") : [], unit: cat === 1 || /^(планка|удержание|вис |статич)/i.test(name) ? "s" : "r",
+    steps: steps.split(" / "), photo: url + "0.jpg", photos: Array.from({ length: nimg }, (_, k) => `${url}${k}.jpg`) };
+});
+// кураторские упражнения тоже участвуют в поиске; мышцы для них берём из группы
+const GROUP_MUSCLES = { chest: [0], back: [1, 2], legs: [11], glutes: [13], shoulders: [5], arms: [7, 8], core: [10], cardio: [] };
+const GROUP_SEC = { back: [3, 4], legs: [12, 13], glutes: [12, 16], arms: [9] };
+EXERCISES.forEach((e) => { e.prim = GROUP_MUSCLES[e.group]; e.sec = GROUP_SEC[e.group] || []; e.cat = e.group === "cardio" ? 6 : 0; });
+const CURATED_NAMES = new Set(EXERCISES.map((e) => norm(e.name)));
+const ALL = [...EXERCISES, ...DB.filter((e) => !CURATED_NAMES.has(norm(e.name)))];
+ALL.forEach((e) => { e._n = norm(e.name + " " + (e.en || "")); e._t = norm(e.steps.join(" ")); });
+const BY_ID = new Map(ALL.map((e) => [e.id, e]));
+const exById = (id) => BY_ID.get(id);
+
+// Разбор фразы: «бицепс с гантелями дома», «растяжка спины для новичка», «ноги без инвентаря»
+const M_ALL_LEGS = [11, 12, 13, 14, 15, 16];
+const Q_PHRASES = [
+  [/бицепс\S* бедр\S*|задн\S* (поверхн\S* )?бедр\S*/, (f) => f.mus.push(12)],
+  [/(свой|своим|собственн\S*) вес\S*|без (инвентар|снаряд|оборудов|железа)\S*/, (f) => (f.bw = true)],
+  [/(мо[йиеё]\S*|доступн\S*) (инвентар|снаряд|оборуд)\S*|что (у меня )?есть/, (f) => (f.mine = true)],
+  [/тяжел\S* атлетик\S*/, (f) => f.cat.push(4)],
+  [/на улиц\S*|на (спорт)?площадк\S*|во двор\S*/, (f) => (f.place = "outdoor")],
+  [/в зал\S*/, (f) => (f.place = "gym")],
+];
+const Q_WORDS = [
+  // мышцы
+  [["бицепс"], (f) => f.mus.push(7)], [["трицепс"], (f) => f.mus.push(8)], [["предплеч", "запяст"], (f) => f.mus.push(9)],
+  [["рук", "руч"], (f) => f.mus.push(7, 8, 9)], [["груд"], (f) => f.mus.push(0)], [["спин"], (f) => f.mus.push(1, 2, 3, 4)],
+  [["широч", "крыл"], (f) => f.mus.push(1)], [["поясниц"], (f) => f.mus.push(3)], [["трапец"], (f) => f.mus.push(4)],
+  [["плеч", "дельт"], (f) => f.mus.push(5)], [["шея", "шеи", "шею", "шейн"], (f) => f.mus.push(6)],
+  [["пресс", "живот", "кубик", "кор", "косы"], (f) => f.mus.push(10)], [["ног"], (f) => f.mus.push(...M_ALL_LEGS)],
+  [["бедр", "квадр"], (f) => f.mus.push(11, 12)], [["ягодиц", "попа", "попу", "попы", "ягодич"], (f) => f.mus.push(13)],
+  [["икр", "голен"], (f) => f.mus.push(14)], [["привод"], (f) => f.mus.push(15)], [["отвод"], (f) => f.mus.push(16)],
+  // инвентарь
+  [["гантел"], (f) => f.eq.push("dumbbells")], [["штанг", "гриф"], (f) => f.eq.push("barbell")], [["гир"], (f) => f.eq.push("kettlebell")],
+  [["резин", "эспандер", "ленточ", "фитнес-резин"], (f) => f.eq.push("bands")], [["блок", "кроссовер", "трос"], (f) => f.eq.push("cable")],
+  [["тренаж"], (f) => f.eq.push("machines")], [["медбол"], (f) => f.eq.push("medball")], [["фитбол"], (f) => f.eq.push("fitball")],
+  [["мяч"], (f) => f.eq.push("medball", "fitball")], [["ролик", "роллер", "мфр"], (f) => f.eq.push("roller")],
+  [["турник", "перекладин", "подтяг"], (f) => f.eq.push("pullup")], [["брус"], (f) => f.eq.push("dips")],
+  [["скамь", "лавк", "скамейк"], (f) => f.eq.push("bench")], [["скакалк"], (f) => f.eq.push("rope")], [["trx", "петл"], (f) => f.eq.push("trx")],
+  [["цеп", "сан", "покрыш", "шин"], (f) => f.eq.push("other")],
+  // место
+  [["дома", "дом", "домашн", "квартир"], (f) => (f.place = "home")], [["улиц", "площадк", "парк", "двор"], (f) => (f.place = "outdoor")],
+  [["зал", "спортзал", "фитнес", "качалк"], (f) => (f.place = "gym")],
+  // уровень
+  [["нович", "начина", "легк", "прост", "лайт"], (f) => (f.lvl = 1)], [["средн"], (f) => (f.lvl = 2)],
+  [["продвинут", "сложн", "опытн", "эксперт", "профи", "тяжел"], (f) => (f.lvl = 3)],
+  // тип
+  [["растяж", "растян", "стретч", "гибк", "заминк"], (f) => f.cat.push(1)], [["кардио", "жиросж", "похуд", "выносл"], (f) => f.cat.push(6, 2)],
+  [["плиометр", "прыж", "взрывн"], (f) => f.cat.push(2)], [["пауэрлифт", "троебор"], (f) => f.cat.push(3)],
+  [["олимп", "тяжелоатлет"], (f) => f.cat.push(4)], [["стронгмен", "strongman"], (f) => f.cat.push(5)], [["силов"], (f) => f.cat.push(0, 3)],
+  [["базов"], (f) => (f.comp = true)], [["изолир"], (f) => (f.comp = false)],
+  [["мой", "мои", "моим", "мне", "меня", "доступн"], (f) => (f.mine = true)],
+];
+const STOP = ["с", "со", "на", "для", "и", "в", "во", "по", "без", "из", "к", "от", "а", "или", "мышц", "упражнен", "покаж", "найд", "дай", "хоч", "как", "какие", "какое", "что", "можно",
+  "сделат", "накач", "прокач", "кача", "укреп", "проработ", "все", "всё", "лучш", "топ", "есть", "мою", "моя", "уровн", "тренир", "вариант", "чтобы", "надо", "нужн", "подбер", "посоветуй", "у"];
+const HOME_EQ = ["mat", "dumbbells", "kettlebell", "bands", "fitball", "medball", "roller", "pullup", "rope", "trx"];
+const PLACE_EQ = { home: HOME_EQ, outdoor: ["mat", "pullup", "dips", "bench", "bands", "rope"], gym: null };
+const eqFits = (e, allowed) => !allowed || e.eq.every((r) => r.split("|").some((x) => allowed.includes(x)));
+
+function parseQuery(raw) {
+  const f = { mus: [], eq: [], cat: [], place: null, lvl: 0, bw: false, mine: false, comp: null, text: [], seen: [] };
+  let q = " " + norm(raw) + " ";
+  for (const [re, fn] of Q_PHRASES) { const m = q.match(re); if (m) { fn(f); f.seen.push(m[0].trim()); q = q.replace(m[0], " "); } }
+  for (const w of q.split(" ").filter(Boolean)) {
+    const rule = Q_WORDS.find(([stems]) => stems.some((s) => (s.length <= 3 ? w === s || (w.startsWith(s) && w.length <= s.length + 3) : w.startsWith(s))));
+    if (rule) { rule[1](f); f.seen.push(w); continue; }
+    if (STOP.some((s) => w === s || (s.length > 3 && w.startsWith(s)))) continue;
+    f.text.push(w);
+  }
+  return f;
+}
+const stem = (w) => (w.length > 5 ? w.slice(0, w.length - 2) : w.length > 3 ? w.slice(0, w.length - 1) : w);
+const textHit = (hay, w) => (" " + hay).includes(" " + stem(w));
+
+function searchAll(raw, opts = {}) {
+  const f = parseQuery(raw), p = store.profile;
+  const allowed = f.mine ? p.eq : f.place ? PLACE_EQ[f.place] : null;
+  const out = [];
+  for (const e of ALL) {
+    if (opts.group && opts.group !== "all" && e.group !== opts.group) continue;
+    if (opts.mine && !eqFits(e, p.eq)) continue;
+    if (e.where && f.place && e.where !== f.place) continue;
+    if (!eqFits(e, allowed)) continue;
+    if (f.bw && e.eq.length) continue;
+    if (f.eq.length && !e.eq.some((r) => r.split("|").some((x) => f.eq.includes(x)))) continue;
+    if (f.cat.length && !f.cat.includes(e.cat)) continue;
+    if (f.lvl === 1 && e.level > 1) continue;
+    if (f.lvl === 2 && e.level !== 2) continue;
+    if (f.lvl === 3 && e.level < 2) continue;
+    if (f.comp != null && e.compound !== f.comp) continue;
+    let score = e.db ? 0 : 3, primHit = true;
+    if (f.mus.length) {
+      const pm = e.prim.filter((m) => f.mus.includes(m)).length, sm = e.sec.filter((m) => f.mus.includes(m)).length;
+      if (!pm && !sm) continue;
+      primHit = pm > 0;
+      score += (pm ? 10 : 0) + Math.min(sm, 2) - (pm ? 0 : 6);
+    }
+    let ok = true;
+    for (const w of f.text) {
+      if (textHit(e._n, w)) score += 12; else if (textHit(e._t, w)) score += 3; else { ok = false; break; }
+    }
+    if (!ok) continue;
+    if (!f.cat.length && !f.text.length && e.cat) score -= e.cat === 1 ? 4 : 2; // растяжки и спецвиды ниже, если не просили
+    out.push([score + (e.compound ? 1 : 0) - e.level * 0.1, e, primHit]);
+  }
+  out.sort((a, b) => b[0] - a[0]);
+  // если по основной мышце нашлось достаточно, вспомогательные не показываем
+  const res = out.filter((x) => x[2]).length >= 6 ? out.filter((x) => x[2]) : out;
+  return { f, list: res.map((x) => x[1]) };
+}
+const EQ_RU = (id) => (EQUIPMENT.find((x) => x.id === id) || { name: id }).name.toLowerCase();
+function understood(f) {
+  const bits = [];
+  if (f.mus.length) { const set = [...new Set(f.mus)]; bits.push(set.length >= 5 && set.includes(11) ? "ноги" : set.length === 4 && set.includes(1) ? "спина" : set.map((m) => MUSCLE_RU[m].toLowerCase()).join(", ")); }
+  if (f.bw) bits.push("свой вес");
+  if (f.eq.length) bits.push([...new Set(f.eq)].map(EQ_RU).join(" или "));
+  if (f.place) bits.push(PLACES.find((x) => x.id === f.place).name.toLowerCase());
+  if (f.mine) bits.push("твой инвентарь");
+  if (f.lvl) bits.push(LEVELS[f.lvl - 1].name.toLowerCase());
+  if (f.cat.length) bits.push([...new Set(f.cat)].map((c) => CAT_RU[c].toLowerCase()).join(" / "));
+  if (f.comp != null) bits.push(f.comp ? "базовые" : "изолирующие");
+  if (f.text.length) bits.push("«" + f.text.join(" ") + "»");
+  return bits;
+}
 
 // ===================== AI-ТРЕНЕР: подбор =====================
 function canDo(ex, p, levelBoost = 0) {
@@ -162,7 +300,7 @@ function swapItem(w, idx) {
 }
 
 // ===================== НАВИГАЦИЯ =====================
-const state = { tab: "coach", stack: [], ob: null, obStep: 0, obReturn: false, group: "all", query: "", onlyMine: true, liftEx: null, builder: new Set() };
+const state = { tab: "coach", stack: [], ob: null, obStep: 0, obReturn: false, group: "all", query: "", limit: 40, onlyMine: true, liftEx: null, builder: new Set() };
 
 function go(tab) { state.tab = tab; state.stack = []; render(); window.scrollTo(0, 0); }
 function push(v) { state.stack.push(v); render(); window.scrollTo(0, 0); }
@@ -180,7 +318,8 @@ function render() {
   if (onboarding) html = viewOnboarding();
   else if (top) html = ({ preview: viewPreview, session: viewSession, exercise: viewExercise, settings: viewSettings, builder: viewBuilder })[top.type](top);
   else html = { coach: viewCoach, catalog: viewCatalog, timer: viewTimer, history: viewHistory, progress: viewProgress }[state.tab]();
-  $app.innerHTML = `<div class="screen">${html}</div>`;
+  const bar = !onboarding && (!top ? state.tab === "catalog" : top.type === "exercise") ? basketBar() : "";
+  $app.innerHTML = `<div class="screen">${html}</div>${bar}`;
   const hideTabs = onboarding || (top && top.type === "session");
   $tabbar.classList.toggle("hidden", !!hideTabs);
   $tabbar.querySelectorAll("button").forEach((b) => b.classList.toggle("active", b.dataset.tab === state.tab));
@@ -330,12 +469,12 @@ function viewPreview(v) {
       <div><span class="eyebrow">Упр.</span><b>${w.items.length}</b></div>
       <div><span class="eyebrow">Подходов</span><b>${w.items.reduce((s, it) => s + it.sets, 0)}</b></div>
     </div>
-    <div class="coach"><div class="ava">AI</div><p>${coachLine(w, p)} Отдых между подходами ${w.items[0] ? w.items[0].rest : 60} с.</p></div>
+    <div class="coach"><div class="ava">AI</div><p>${v.basket ? "Собрал из твоей подборки, подходы и повторы подстроил под твою цель." : coachLine(w, p)} Отдых между подходами ${w.items[0] ? w.items[0].rest : 60} с.</p></div>
     <div class="section"><div class="section-head"><div class="h2">Упражнения</div>${v.day != null ? `<button class="swap" data-reshuffle>🔄 Другие</button>` : ""}</div>
       <div class="list">${w.items.map((it, i) => { const e = exById(it.id); return `
         <div class="row"><button class="thumb" data-ex="${e.id}">${img(e.photo, 200)}</button>
           <button class="grow" style="text-align:left" data-ex="${e.id}"><div class="title">${e.name}</div><div class="sub">${GROUPS[e.group].name} · ${it.sets} × ${it.reps}${it.unit === "s" ? " с" : ""}</div></button>
-          <button class="swap" data-swap="${i}">Заменить</button></div>`; }).join("") ||
+          ${v.basket ? `<button class="swap" data-unbasket="${i}">Убрать</button>` : `<button class="swap" data-swap="${i}">Заменить</button>`}</div>`; }).join("") ||
         `<div class="empty"><div class="big">🤷</div><b>Не из чего собрать</b><p>Добавь инвентарь в настройках, и я подберу упражнения.</p></div>`}</div></div>
     ${w.items.length ? `<div class="section"><button class="btn block" data-start>▶ Начать тренировку</button></div>` : ""}
   </div>`;
@@ -392,33 +531,57 @@ function finishSession() {
 }
 
 // ===================== КАТАЛОГ =====================
+const Q_EXAMPLES = ["бицепс с гантелями дома", "ноги без инвентаря", "спина на турнике", "пресс для новичка", "растяжка спины", "грудь в зале", "ягодицы с резинкой", "кардио дома"];
 function viewCatalog() {
-  const p = store.profile, q = state.query.trim().toLowerCase();
-  const list = EXERCISES.filter((e) => (state.group === "all" || e.group === state.group) && (!state.onlyMine || canDo(e, p, 1)) && (!q || e.name.toLowerCase().includes(q)));
-  const mine = available(p).length;
+  const p = store.profile, q = state.query.trim();
+  const { f, list } = searchAll(q, { group: state.group, mine: state.onlyMine });
+  const shown = list.slice(0, state.limit), bits = q ? understood(f) : [];
+  const n = list.length;
   return `
-  <div class="top"><div><div class="eyebrow">${mine} из ${EXERCISES.length} доступно тебе</div><div class="h1" style="margin-top:8px">Упражнения</div></div></div>
-  <input class="search" id="search" placeholder="Поиск: жим, присед, планка…" value="${esc(state.query)}">
+  <div class="top"><div><div class="eyebrow">${ALL.length} упражнений в базе</div><div class="h1" style="margin-top:8px">Упражнения</div></div></div>
+  <input class="search" id="search" type="search" enterkeyhint="search" placeholder="Спроси тренера: бицепс с гантелями дома" value="${esc(state.query)}">
+  ${q ? `<div class="coach" style="margin:0 0 12px"><div class="ava">AI</div><p>${n ? `Нашёл ${n} ${plural(n, "упражнение", "упражнения", "упражнений")}` : "Ничего не нашёл"}${bits.length ? `: ${esc(bits.join(" · "))}` : ""}.${!n ? " Попробуй проще, например «спина с гантелями»" + (state.onlyMine ? " или выключи «Мой инвентарь»" : "") + "." : ""}</p></div>`
+    : `<div class="chips" style="margin-bottom:12px">${Q_EXAMPLES.map((x) => `<button class="chip ghost" data-q="${x}">${x}</button>`).join("")}</div>`}
   <div class="seg" style="grid-template-columns:1fr 1fr;margin-bottom:12px"><button data-mine="1" class="${state.onlyMine ? "active" : ""}">Мой инвентарь</button><button data-mine="0" class="${state.onlyMine ? "" : "active"}">Все</button></div>
   <div class="chips"><button class="chip ${state.group === "all" ? "active" : ""}" data-group="all">Все</button>${Object.entries(GROUPS).map(([id, g]) => `<button class="chip ${id === state.group ? "active" : ""}" data-group="${id}">${g.name}</button>`).join("")}</div>
-  <div class="grid section" style="margin-top:16px">${list.map((e) => `
-    <button class="tile" data-ex="${e.id}">${img(e.photo, 500, e.name)}
-      <div class="cap"><span>${GROUPS[e.group].name}${e.eq.length ? "" : " · свой вес"}</span><b>${e.name}</b></div></button>`).join("") || `<div class="muted">Ничего не найдено</div>`}</div>`;
+  <div class="grid section" style="margin-top:16px">${shown.map((e) => `
+    <button class="tile${e.db ? " tile-db" : ""}" data-ex="${e.id}">${img(e.photo, 500, e.name)}${store.basket.includes(e.id) ? `<span class="in-basket">✓</span>` : ""}
+      <div class="cap"><span>${GROUPS[e.group].name}${e.eq.length ? "" : " · свой вес"}</span><b>${e.name}</b></div></button>`).join("") || `<div class="muted">Ничего не найдено</div>`}</div>
+  ${n > shown.length ? `<div class="section"><button class="btn dark block" data-more>Показать ещё (${n - shown.length})</button></div>` : ""}
+  <div class="muted" style="font-size:12px;margin:18px 0 0;text-align:center">База упражнений: free-exercise-db (общественное достояние)</div>`;
+}
+function basketBar() {
+  const n = store.basket.length;
+  if (!n) return "";
+  return `<div style="height:72px"></div><div class="basket-bar"><button class="grow" data-basket-go>▶ Моя тренировка · ${n} ${plural(n, "упражнение", "упражнения", "упражнений")}</button><button class="x" data-basket-clear aria-label="Очистить">✕</button></div>`;
+}
+function basketWorkout() {
+  const p = store.profile, items = store.basket.map(exById).filter(Boolean).map((e) => ({ id: e.id, ...scheme(e, p) }));
+  return { title: "Моя подборка", groups: [...new Set(items.map((it) => exById(it.id).group))].concat("core").slice(0, 3), items, missing: [] };
 }
 function viewExercise(v) {
   const e = exById(v.id), have = new Set(store.profile.eq);
+  if (!e) return `<div class="empty" style="margin-top:40px"><b>Упражнение не найдено</b><p><button class="btn" data-back>Назад</button></p></div>`;
   const reqs = e.eq.map((r) => { const opts = r.split("|"); const ok = opts.some((x) => have.has(x)); return `<div class="pr"><div>${opts.map(eqName).join(" или ")}</div><b class="${ok ? "lime" : ""}" style="font-size:15px;${ok ? "" : "color:var(--danger)"}">${ok ? "✓ есть" : "нет"}</b></div>`; });
-  const sc = scheme(e, store.profile);
+  const sc = scheme(e, store.profile), inB = store.basket.includes(e.id);
+  const mus = e.db ? `<div class="section"><div class="section-head"><div class="h2">Мышцы</div></div><div class="card">
+      <div class="pr"><div>Основные</div><b style="font-size:15px;text-align:right">${e.prim.map((m) => MUSCLE_RU[m]).join(", ") || "—"}</b></div>
+      ${e.sec.length ? `<div class="pr"><div>Помогают</div><b style="font-size:15px;text-align:right;font-weight:500">${e.sec.map((m) => MUSCLE_RU[m]).join(", ")}</b></div>` : ""}</div></div>` : "";
+  const pics = e.db && e.photos.length > 1 ? `<div class="section"><div class="section-head"><div class="h2">Как выглядит</div></div><div class="pics">${e.photos.map((u, k) => `<figure>${img(u, 500, e.name)}<figcaption>${k ? "Финиш" : "Старт"}</figcaption></figure>`).join("")}</div></div>` : "";
   return `
-  <div class="detail-hero">${img(e.photo, 900, e.name)}<button class="back" data-back>‹ Назад</button></div>
+  <div class="detail-hero${e.db ? " hero-db" : ""}">${img(e.photo, 900, e.name)}<button class="back" data-back>‹ Назад</button></div>
   <div class="detail-body">
-    <span class="tag">${GROUPS[e.group].name}</span>
+    <span class="tag">${GROUPS[e.group].name}</span>${e.db ? ` <span class="tag ghost">${CAT_RU[e.cat]}</span>` : ""}
     <div class="h1" style="margin-top:12px;font-size:32px">${e.name}</div>
+    ${e.en ? `<div class="muted" style="margin-top:6px;font-size:13px">${esc(e.en)}</div>` : ""}
     <div class="kv">
       <div><span class="eyebrow">Уровень</span><b>${LEVELS[e.level - 1].name}</b></div>
       <div style="grid-column:span 2"><span class="eyebrow">Для тебя</span><b>${sc.sets} × ${sc.reps}${sc.unit === "s" ? " с" : ""}, отдых ${sc.rest} с</b></div>
     </div>
-    <div class="section"><div class="section-head"><div class="h2">Техника</div></div><ol class="steps">${e.steps.map((s) => `<li>${s}</li>`).join("")}</ol></div>
+    <div class="section"><button class="btn block ${inB ? "dark" : ""}" data-basket="${esc(e.id)}">${inB ? "✓ В моей тренировке · убрать" : "+ Добавить в мою тренировку"}</button></div>
+    <div class="section"><div class="section-head"><div class="h2">Техника</div></div><ol class="steps">${e.steps.map((s) => `<li>${s}</li>`).join("")}</ol>
+      ${e.en ? `<button class="swap" style="margin-top:12px" data-video="${esc(e.en)}">▶ Видео техники на YouTube</button>` : ""}</div>
+    ${pics}${mus}
     <div class="section"><div class="section-head"><div class="h2">Инвентарь</div></div>
       <div class="card">${reqs.length ? reqs.join("") : `<div class="pr"><div>Без инвентаря, свой вес</div><b class="lime" style="font-size:15px">✓</b></div>`}${e.where === "outdoor" ? `<div class="pr"><div>Только на улице</div><b style="font-size:15px">🌳</b></div>` : ""}</div></div>
   </div>`;
@@ -629,10 +792,21 @@ function bind() {
   on("[data-edit]", (el) => { state.ob = { ...store.profile, eq: [...store.profile.eq], eqTouched: true }; state.obStep = +el.dataset.edit; state.obReturn = true; render(); window.scrollTo(0, 0); });
   on("[data-reset]", (el) => { if (el.dataset.confirm) { resetAll(); toast("Данные сброшены"); } else { el.dataset.confirm = "1"; el.textContent = "Нажми ещё раз, чтобы удалить всё"; } });
   // каталог
-  on("[data-group]", (el) => { state.group = el.dataset.group; render(); });
-  on("[data-mine]", (el) => { state.onlyMine = el.dataset.mine === "1"; render(); });
+  on("[data-group]", (el) => { state.group = el.dataset.group; state.limit = 40; render(); });
+  on("[data-mine]", (el) => { state.onlyMine = el.dataset.mine === "1"; state.limit = 40; render(); });
+  on("[data-q]", (el) => { state.query = el.dataset.q; state.group = "all"; state.limit = 40; render(); });
+  on("[data-more]", () => { const y = window.scrollY; state.limit += 40; render(); window.scrollTo(0, y); });
+  on("[data-basket]", (el) => { const id = el.dataset.basket, b = store.basket;
+    store.basket = b.includes(id) ? b.filter((x) => x !== id) : [...b, id]; save(); notify(); render(); });
+  on("[data-unbasket]", (el) => { const v = state.stack[state.stack.length - 1], it = v.w.items.splice(+el.dataset.unbasket, 1)[0];
+    store.basket = store.basket.filter((x) => x !== it.id); save(); render(); });
+  on("[data-basket-go]", () => push({ type: "preview", w: basketWorkout(), basket: true }));
+  on("[data-basket-clear]", () => { store.basket = []; save(); render(); toast("Подборка очищена"); });
+  on("[data-video]", (el) => { const u = "https://www.youtube.com/results?search_query=" + encodeURIComponent(el.dataset.video + " exercise technique");
+    try { tg && tg.openLink ? tg.openLink(u) : window.open(u, "_blank"); } catch (e) { window.open(u, "_blank"); } });
   const s = document.getElementById("search");
-  if (s) s.oninput = () => { state.query = s.value; const pos = s.selectionStart; render(); const n = document.getElementById("search"); n.focus(); n.setSelectionRange(pos, pos); };
+  let st = null;
+  if (s) s.oninput = () => { clearTimeout(st); st = setTimeout(() => { state.query = s.value; state.limit = 40; const pos = s.selectionStart; render(); const n = document.getElementById("search"); n.focus(); n.setSelectionRange(pos, pos); }, 250); };
   // прогресс
   on("[data-lift]", (el) => { state.liftEx = el.dataset.lift; render(); });
   // таймер
